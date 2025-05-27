@@ -118,42 +118,66 @@ def create_vocab_from_training_data(train_bin_path, expected_vocab_size):
         return {i: f"token_{tokens_by_frequency[i]}" for i in range(len(tokens_by_frequency))}
 
 def create_word_cloud(embeddings, vocab, dimension, output_dir, top_n=50):
-    """Create a word cloud for a specific embedding dimension."""
+    """Create a word cloud for a specific embedding dimension with positive (black) and negative (red) tokens."""
     print(f"Creating word cloud for dimension {dimension}")
     
     # Get values for this dimension
     dim_values = embeddings[:, dimension].numpy()
     
     # Get top positive tokens
-    top_indices = np.argsort(-dim_values)[:top_n]
+    pos_indices = np.argsort(-dim_values)[:top_n]
+    pos_scores = dim_values[pos_indices]
     
-    # Create word frequencies
+    # Get top negative tokens (by sorting the most negative values)
+    neg_indices = np.argsort(dim_values)[:top_n]
+    neg_scores = -dim_values[neg_indices]  # Make positive for word cloud frequencies
+    
+    # Create word frequencies and color mapping
     word_frequencies = {}
-    for idx in top_indices:
-        if dim_values[idx] > 0:  # Only positive values
+    word_colors = {}
+    
+    # Add positive tokens (black)
+    for idx, score in zip(pos_indices, pos_scores):
+        if score > 0:  # Only truly positive values
             token = vocab.get(idx, f"token_{idx}")
             # Clean token string
             if token.strip() and len(token.strip()) > 0:
-                word_frequencies[token] = dim_values[idx]
+                word_frequencies[token] = float(score)
+                word_colors[token] = '#000000'  # Black for positive
+    
+    # Add negative tokens (red)
+    for idx, score in zip(neg_indices, neg_scores):
+        if dim_values[idx] < 0:  # Only truly negative values
+            token = vocab.get(idx, f"token_{idx}")
+            # Clean token string
+            if token.strip() and len(token.strip()) > 0 and token not in word_frequencies:
+                word_frequencies[token] = float(score)  # Use positive value for frequency
+                word_colors[token] = '#CC0000'  # Red for negative
     
     if not word_frequencies:
         print(f"No valid tokens for dimension {dimension}")
         return
     
-    # Create word cloud
+    print(f"Dimension {dimension}: {len([c for c in word_colors.values() if c == '#000000'])} positive (black), {len([c for c in word_colors.values() if c == '#CC0000'])} negative (red) tokens")
+    
+    # Create word cloud with custom color function
+    def color_func(word, **kwargs):
+        return word_colors.get(word, '#000000')
+    
     wordcloud = WordCloud(
         width=800, 
         height=400, 
         background_color='white',
-        max_words=top_n,
-        colormap='viridis'
+        max_words=len(word_frequencies),
+        color_func=color_func,
+        prefer_horizontal=1.0
     ).generate_from_frequencies(word_frequencies)
     
     # Save plot
-    plt.figure(figsize=(10, 5))
+    plt.figure(figsize=(12, 6))
     plt.imshow(wordcloud, interpolation='bilinear')
     plt.axis('off')
-    plt.title(f'Dimension {dimension} - Top Tokens')
+    plt.title(f'Dimension {dimension} - Black: Positive, Red: Negative', fontsize=14)
     
     output_path = os.path.join(output_dir, f'dimension_{dimension}.png')
     plt.savefig(output_path, dpi=200, bbox_inches='tight')
