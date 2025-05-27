@@ -192,12 +192,14 @@ def create_word_cloud(
 
 
 def main():
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print("Usage: python visualize_tokens.py <checkpoint.pt> [training_data.txt]")
-        sys.exit(1)
+    # Get paths from environment variables
+    checkpoint_path = os.environ.get("MODEL")
+    training_data_path = os.environ.get("TRAINING_DATA")
 
-    checkpoint_path = sys.argv[1]
-    training_data_path = sys.argv[2] if len(sys.argv) == 3 else None
+    if not checkpoint_path:
+        print("Error: MODEL environment variable not set")
+        print("Please set MODEL to the path of your checkpoint file")
+        sys.exit(1)
 
     if not os.path.exists(checkpoint_path):
         print(f"Checkpoint not found: {checkpoint_path}")
