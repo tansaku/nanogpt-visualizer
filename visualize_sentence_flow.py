@@ -220,8 +220,44 @@ def create_sentence_flow_visualization(
     return output_path
 
 
-def generate_html_page(output_dir, model_name, probe_sentence, words, n_embd):
+def generate_html_page(
+    output_dir, model_name, probe_sentence, words, n_embd, word_embeddings=None
+):
     """Generate HTML page for the sentence flow visualization."""
+
+    # Create data table if we have embeddings
+    data_table_html = ""
+    if word_embeddings is not None:
+        data_table_html = f"""
+            <div class="data-section">
+                <h3>Exact Embedding Values</h3>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Word</th>"""
+
+        for dim in range(n_embd):
+            data_table_html += f"<th>Dim {dim}</th>"
+
+        data_table_html += """
+                            </tr>
+                        </thead>
+                        <tbody>"""
+
+        for word_idx, (word, embedding) in enumerate(zip(words, word_embeddings)):
+            data_table_html += f"<tr><td class='word-cell'><strong>{word}</strong></td>"
+            for dim in range(n_embd):
+                value = embedding[dim]
+                cell_class = "positive" if value >= 0 else "negative"
+                data_table_html += f"<td class='{cell_class}'>{value:.3f}</td>"
+            data_table_html += "</tr>"
+
+        data_table_html += """
+                        </tbody>
+                    </table>
+                </div>
+            </div>"""
 
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -237,7 +273,7 @@ def generate_html_page(output_dir, model_name, probe_sentence, words, n_embd):
             background: #f5f5f5;
         }}
         .container {{
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             background: white;
             border-radius: 8px;
@@ -264,13 +300,95 @@ def generate_html_page(output_dir, model_name, probe_sentence, words, n_embd):
         .visualization {{
             text-align: center;
             margin: 30px 0;
+            position: relative;
         }}
-        .visualization img {{
-            max-width: 100%;
-            height: auto;
-            border: 1px solid #ddd;
+        .zoom-container {{
+            border: 2px solid #ddd;
             border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            overflow: hidden;
+            position: relative;
+            max-height: 80vh;
+            overflow: auto;
+            background: white;
+        }}
+        .zoom-container img {{
+            display: block;
+            width: 100%;
+            height: auto;
+            transition: transform 0.2s;
+            cursor: grab;
+        }}
+        .zoom-container img:active {{
+            cursor: grabbing;
+        }}
+        .zoom-controls {{
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 5px;
+            padding: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }}
+        .zoom-btn {{
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            margin: 0 2px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+        }}
+        .zoom-btn:hover {{
+            background: #5a67d8;
+        }}
+        .data-section {{
+            margin: 30px 0;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+        }}
+        .table-container {{
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: white;
+        }}
+        .data-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }}
+        .data-table th {{
+            background: #667eea;
+            color: white;
+            padding: 8px 4px;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }}
+        .data-table td {{
+            padding: 6px 4px;
+            text-align: center;
+            border: 1px solid #eee;
+        }}
+        .word-cell {{
+            background: #f8f9fa !important;
+            font-weight: bold;
+            position: sticky;
+            left: 0;
+            z-index: 5;
+        }}
+        .positive {{
+            background: rgba(0, 0, 0, 0.05);
+        }}
+        .negative {{
+            background: rgba(220, 0, 0, 0.05);
+            color: #dc3545;
         }}
         .info {{
             background: #f8f9fa;
@@ -316,6 +434,13 @@ def generate_html_page(output_dir, model_name, probe_sentence, words, n_embd):
             font-weight: bold;
             color: #667eea;
         }}
+        .instructions {{
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #2196f3;
+        }}
     </style>
 </head>
 <body>
@@ -357,6 +482,16 @@ def generate_html_page(output_dir, model_name, probe_sentence, words, n_embd):
                 <p><em>Note: You must run visualize_tokens.py first to generate the embedding wordmaps.</em></p>
             </div>
 
+            <div class="instructions">
+                <strong>🔍 Interaction Instructions:</strong>
+                <ul>
+                    <li><strong>Zoom:</strong> Use mouse wheel to zoom in/out on the visualization</li>
+                    <li><strong>Pan:</strong> Click and drag to move around when zoomed in</li>
+                    <li><strong>Reset:</strong> Use the zoom controls in the top-right corner</li>
+                    <li><strong>Data Table:</strong> Scroll down to see exact numerical values</li>
+                </ul>
+            </div>
+
             <div class="legend">
                 <div class="legend-item">
                     <div class="legend-color" style="background: black; border: 2px solid black;"></div>
@@ -377,8 +512,17 @@ def generate_html_page(output_dir, model_name, probe_sentence, words, n_embd):
             </div>
 
             <div class="visualization">
-                <img src="sentence_flow.png" alt="Sentence Flow Visualization">
+                <div class="zoom-container" id="zoomContainer">
+                    <div class="zoom-controls">
+                        <button class="zoom-btn" onclick="zoomIn()">+</button>
+                        <button class="zoom-btn" onclick="zoomOut()">−</button>
+                        <button class="zoom-btn" onclick="resetZoom()">Reset</button>
+                    </div>
+                    <img id="mainImage" src="sentence_flow.png" alt="Sentence Flow Visualization">
+                </div>
             </div>
+
+            {data_table_html}
 
             <div class="info">
                 <h3>Interpretation</h3>
@@ -392,6 +536,75 @@ def generate_html_page(output_dir, model_name, probe_sentence, words, n_embd):
             </div>
         </div>
     </div>
+
+    <script>
+        let currentZoom = 1;
+        let isDragging = false;
+        let startX, startY, scrollLeft, scrollTop;
+
+        const container = document.getElementById('zoomContainer');
+        const image = document.getElementById('mainImage');
+
+        // Zoom functionality
+        container.addEventListener('wheel', function(e) {{
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            currentZoom *= delta;
+            currentZoom = Math.max(0.5, Math.min(currentZoom, 5));
+            image.style.transform = `scale(${{currentZoom}})`;
+        }});
+
+        // Pan functionality
+        container.addEventListener('mousedown', function(e) {{
+            isDragging = true;
+            startX = e.pageX - container.offsetLeft;
+            startY = e.pageY - container.offsetTop;
+            scrollLeft = container.scrollLeft;
+            scrollTop = container.scrollTop;
+            container.style.cursor = 'grabbing';
+        }});
+
+        container.addEventListener('mouseleave', function() {{
+            isDragging = false;
+            container.style.cursor = 'grab';
+        }});
+
+        container.addEventListener('mouseup', function() {{
+            isDragging = false;
+            container.style.cursor = 'grab';
+        }});
+
+        container.addEventListener('mousemove', function(e) {{
+            if (!isDragging) return;
+            e.preventDefault();
+            const x = e.pageX - container.offsetLeft;
+            const y = e.pageY - container.offsetTop;
+            const walkX = (x - startX) * 2;
+            const walkY = (y - startY) * 2;
+            container.scrollLeft = scrollLeft - walkX;
+            container.scrollTop = scrollTop - walkY;
+        }});
+
+        // Zoom control buttons
+        function zoomIn() {{
+            currentZoom *= 1.2;
+            currentZoom = Math.min(currentZoom, 5);
+            image.style.transform = `scale(${{currentZoom}})`;
+        }}
+
+        function zoomOut() {{
+            currentZoom *= 0.8;
+            currentZoom = Math.max(currentZoom, 0.5);
+            image.style.transform = `scale(${{currentZoom}})`;
+        }}
+
+        function resetZoom() {{
+            currentZoom = 1;
+            image.style.transform = 'scale(1)';
+            container.scrollLeft = 0;
+            container.scrollTop = 0;
+        }}
+    </script>
 </body>
 </html>"""
 
@@ -429,6 +642,14 @@ def main():
     words, token_ids = tokenize_sentence(probe_sentence, stoi)
     print(f"Tokenized: {words} -> {token_ids}")
 
+    # Get embedding values for each word (for the data table)
+    word_embeddings = []
+    for token_id in token_ids:
+        if token_id < embeddings.shape[0]:
+            word_embeddings.append(embeddings[token_id].numpy())
+        else:
+            word_embeddings.append(np.zeros(embeddings.shape[1]))
+
     # Create output directory
     model_dir = os.path.basename(os.path.dirname(checkpoint_path))
     output_dir = os.path.join("visualizations", model_dir, "sentence_flow")
@@ -441,7 +662,12 @@ def main():
 
     # Generate HTML page
     generate_html_page(
-        output_dir, model_dir, probe_sentence, words, embeddings.shape[1]
+        output_dir,
+        model_dir,
+        probe_sentence,
+        words,
+        embeddings.shape[1],
+        word_embeddings,
     )
 
     print(f"\nDone! Sentence flow visualization saved to: {output_dir}/")
