@@ -217,6 +217,10 @@ def main():
         print(f"Checkpoint not found: {checkpoint_path}")
         sys.exit(1)
 
+    # Extract model name from checkpoint path
+    # e.g., /path/to/knock_6_1_96_words/ckpt.pt -> knock_6_1_96_words
+    model_dir = os.path.basename(os.path.dirname(checkpoint_path))
+
     embeddings, vocab_size, model_args = load_checkpoint(checkpoint_path)
     nanogpt_path = os.environ.get("NANOGPT_PATH")
     vocab = create_vocabulary_mapping(vocab_size, nanogpt_path)
@@ -225,13 +229,15 @@ def main():
     if training_data_path:
         training_tokens = analyze_training_data(training_data_path, vocab)
 
-    output_dir = "token_visualizations"
+    # Create model-specific output directory
+    output_dir = os.path.join("visualizations", model_dir, "embedding_wordmaps")
     os.makedirs(output_dir, exist_ok=True)
 
     n_embd = embeddings.shape[1]
     dimensions_to_visualize = min(5, n_embd)
 
     print(f"Creating visualizations for {dimensions_to_visualize} dimensions...")
+    print(f"Output directory: {output_dir}")
 
     for dim in range(dimensions_to_visualize):
         create_word_cloud(embeddings, vocab, dim, output_dir)
