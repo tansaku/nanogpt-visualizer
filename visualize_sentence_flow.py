@@ -136,20 +136,31 @@ def create_sentence_flow_visualization(
         f"Creating {representation_type} visualization for {n_words} words across {n_embd} dimensions"
     )
 
-    # Load existing wordmap images
-    wordmap_dir = os.path.join("visualizations", model_dir, "embedding_wordmaps")
+    # Determine which wordmaps to load based on representation type
+    if representation_type == "positional":
+        wordmap_dir = os.path.join("visualizations", model_dir, "positional_wordmaps")
+        wordmap_prefix = "position_dimension"
+        print(f"Loading positional wordmaps from: {wordmap_dir}")
+    else:
+        wordmap_dir = os.path.join("visualizations", model_dir, "embedding_wordmaps")
+        wordmap_prefix = "dimension"
+        print(f"Loading token wordmaps from: {wordmap_dir}")
+
     if not os.path.exists(wordmap_dir):
         print(f"Error: Wordmap directory not found: {wordmap_dir}")
-        print("Please run visualize_tokens.py first to generate embedding wordmaps")
+        if representation_type == "positional":
+            print(
+                "Please run visualize_positions.py first to generate positional wordmaps"
+            )
+        else:
+            print("Please run visualize_tokens.py first to generate embedding wordmaps")
         return None
-
-    print(f"Loading wordmaps from: {wordmap_dir}")
 
     # Load wordmap images
     wordmap_images = {}
     wordmap_size = None
     for dim in range(n_embd):
-        wordmap_path = os.path.join(wordmap_dir, f"dimension_{dim}.png")
+        wordmap_path = os.path.join(wordmap_dir, f"{wordmap_prefix}_{dim}.png")
         if os.path.exists(wordmap_path):
             img = Image.open(wordmap_path)
             wordmap_images[dim] = img
@@ -288,13 +299,24 @@ def create_sentence_flow_visualization(
             # Get embedding value and calculate opacity
             embed_value = embedding[dim]
 
-            if max_val != min_val:
-                all_abs_values = np.abs(all_values)
-                percentile = np.mean(all_abs_values <= abs(embed_value))
-                opacity = np.power(percentile, 0.5)
-                opacity = max(0.2, min(0.95, opacity))
+            if representation_type == "positional":
+                # For positional encodings, use direct mapping based on absolute value
+                # This ensures opacity directly reflects the positional embedding magnitude
+                max_abs_value = max(abs(v) for emb in word_embeddings for v in emb)
+                if max_abs_value > 0:
+                    opacity = abs(embed_value) / max_abs_value
+                    opacity = max(0.1, min(0.95, opacity))  # Ensure visibility
+                else:
+                    opacity = 0.5
             else:
-                opacity = 0.5
+                # For token embeddings, use percentile-based mapping for better contrast
+                if max_val != min_val:
+                    all_abs_values = np.abs(all_values)
+                    percentile = np.mean(all_abs_values <= abs(embed_value))
+                    opacity = np.power(percentile, 0.5)
+                    opacity = max(0.2, min(0.95, opacity))
+                else:
+                    opacity = 0.5
 
             # Get the wordmap image and resize it
             wordmap_img = wordmap_images[dim].copy()
@@ -646,11 +668,12 @@ def generate_html_page(
                 <h3>Understanding the Representations</h3>
                 <p>This visualization shows three different representations of your probe sentence:</p>
                 <ul>
-                    <li><strong>Token Embeddings:</strong> The learned word representations from the vocabulary</li>
-                    <li><strong>Positional Encodings:</strong> Position-specific patterns that indicate where each word appears in the sequence</li>
-                    <li><strong>Combined (Token + Position):</strong> What the model actually sees - token embeddings plus positional encodings</li>
+                    <li><strong>Token Embeddings:</strong> The learned word representations from the vocabulary (using semantic wordmaps)</li>
+                    <li><strong>Positional Encodings:</strong> Position-specific numerical patterns that encode sequence position (shown as numerical heatmap - these are the same for any words at these positions)</li>
+                    <li><strong>Combined (Token + Position):</strong> What the model actually sees - token embeddings plus positional encodings (using wordmaps with combined values)</li>
                 </ul>
                 <p><strong>🔍 Usage:</strong> Switch between tabs to see how each representation affects the visualization. Use your browser's native zoom to examine details.</p>
+                <p><strong>⚠️ Note:</strong> Positional encodings are shown as a numerical heatmap because they don't relate to word meanings - they're pure mathematical patterns based on sequence position.</p>
             </div>
 
             {visualization_tabs_html}
