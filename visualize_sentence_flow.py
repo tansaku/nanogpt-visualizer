@@ -221,7 +221,7 @@ def create_sentence_flow_visualization(
         # Add word index below
         draw.text(
             (label_x, label_y + 50),
-            f"Word {word_idx + 1}",
+            "",
             fill=(60, 60, 60),
             font=font_large,
             anchor="lm",
