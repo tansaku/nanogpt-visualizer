@@ -130,16 +130,33 @@ def create_sentence_flow_visualization(
     grid_rows = int(np.ceil(n_embd / grid_cols))
     print(f"Using {grid_rows}×{grid_cols} grid for {n_embd} dimensions")
 
-    # Calculate canvas size
+    # Calculate canvas size - EXTREME changes for visibility
     wordmap_width, wordmap_height = wordmap_size
-    word_label_width = 120  # Increased space for word labels
-    word_block_height = grid_rows * wordmap_height
-    word_separator_height = 20  # Space between word blocks
 
-    canvas_width = word_label_width + (grid_cols * wordmap_width)
-    canvas_height = n_words * word_block_height + (n_words - 1) * word_separator_height
+    # Shrink wordmaps dramatically for overview
+    small_wordmap_size = 40  # Much smaller than original
+    scale_factor = small_wordmap_size / min(wordmap_width, wordmap_height)
+    small_wordmap_width = int(wordmap_width * scale_factor)
+    small_wordmap_height = int(wordmap_height * scale_factor)
+
+    word_label_width = 200  # Much larger space for word labels
+    word_block_height = grid_rows * small_wordmap_height
+    word_separator_height = 60  # Much larger space between word blocks
+    border_thickness = 4  # Thick black borders
+
+    canvas_width = (
+        word_label_width + (grid_cols * small_wordmap_width) + border_thickness * 2
+    )
+    canvas_height = (
+        n_words * word_block_height
+        + (n_words - 1) * word_separator_height
+        + border_thickness * 2
+    )
 
     print(f"Creating canvas: {canvas_width}×{canvas_height} pixels")
+    print(
+        f"Wordmaps resized from {wordmap_width}×{wordmap_height} to {small_wordmap_width}×{small_wordmap_height}"
+    )
 
     # Create canvas
     canvas = Image.new("RGB", (canvas_width, canvas_height), "white")
@@ -149,9 +166,13 @@ def create_sentence_flow_visualization(
 
     # Try to load a font (fallback to default if not available)
     try:
-        font_large = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 24)
-        font_small = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 12)
+        font_huge = ImageFont.truetype(
+            "/System/Library/Fonts/Arial.ttf", 36
+        )  # Much larger
+        font_large = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 18)
+        font_small = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 10)
     except:
+        font_huge = ImageFont.load_default()
         font_large = ImageFont.load_default()
         font_small = ImageFont.load_default()
 
@@ -160,46 +181,49 @@ def create_sentence_flow_visualization(
         print(f"Processing word '{word}' ({word_idx + 1}/{n_words})")
 
         # Calculate Y offset for this word's grid (including separators)
-        word_y_offset = word_idx * (word_block_height + word_separator_height)
-
-        # Draw word block background (light gray)
-        word_block_rect = [
-            0,
-            word_y_offset,
-            canvas_width,
-            word_y_offset + word_block_height,
-        ]
-        draw.rectangle(
-            word_block_rect, fill=(250, 250, 250), outline=(200, 200, 200), width=2
+        word_y_offset = border_thickness + word_idx * (
+            word_block_height + word_separator_height
         )
 
-        # Add prominent word label
-        label_x = 10
+        # Draw THICK BLACK border around entire word block
+        word_block_rect = [
+            border_thickness,
+            word_y_offset - border_thickness,
+            canvas_width - border_thickness,
+            word_y_offset + word_block_height + border_thickness,
+        ]
+        draw.rectangle(
+            word_block_rect,
+            fill=(240, 240, 240),
+            outline="black",
+            width=border_thickness,
+        )
+
+        # Add HUGE word label
+        label_x = 20
         label_y = word_y_offset + (word_block_height // 2)
 
-        # Draw word label background
+        # Draw word label with large background
         label_bbox = draw.textbbox(
-            (label_x, label_y), word, font=font_large, anchor="lm"
+            (label_x, label_y), word, font=font_huge, anchor="lm"
         )
         label_bg_rect = [
-            label_bbox[0] - 5,
-            label_bbox[1] - 5,
-            label_bbox[2] + 5,
-            label_bbox[3] + 5,
+            label_bbox[0] - 10,
+            label_bbox[1] - 10,
+            label_bbox[2] + 10,
+            label_bbox[3] + 10,
         ]
-        draw.rectangle(
-            label_bg_rect, fill=(255, 255, 255), outline=(100, 100, 100), width=1
-        )
+        draw.rectangle(label_bg_rect, fill="white", outline="black", width=2)
 
         # Draw word label
-        draw.text((label_x, label_y), word, fill="black", font=font_large, anchor="lm")
+        draw.text((label_x, label_y), word, fill="black", font=font_huge, anchor="lm")
 
-        # Add word index
+        # Add word index below
         draw.text(
-            (label_x, label_y + 30),
+            (label_x, label_y + 50),
             f"Word {word_idx + 1}",
-            fill=(100, 100, 100),
-            font=font_small,
+            fill=(60, 60, 60),
+            font=font_large,
             anchor="lm",
         )
 
@@ -213,8 +237,8 @@ def create_sentence_flow_visualization(
             col_in_grid = dim % grid_cols
 
             # Calculate pixel position
-            x = word_label_width + (col_in_grid * wordmap_width)
-            y = word_y_offset + (row_in_grid * wordmap_height)
+            x = word_label_width + (col_in_grid * small_wordmap_width)
+            y = word_y_offset + (row_in_grid * small_wordmap_height)
 
             # Get embedding value and calculate opacity
             embed_value = embedding[dim]
@@ -227,8 +251,11 @@ def create_sentence_flow_visualization(
             else:
                 opacity = 0.5
 
-            # Get the wordmap image
+            # Get the wordmap image and resize it
             wordmap_img = wordmap_images[dim].copy()
+            wordmap_img = wordmap_img.resize(
+                (small_wordmap_width, small_wordmap_height), Image.Resampling.LANCZOS
+            )
 
             # Apply opacity and color tinting
             if embed_value < 0:
@@ -254,30 +281,23 @@ def create_sentence_flow_visualization(
             # Paste onto canvas
             canvas.paste(wordmap_img, (x, y), wordmap_img)
 
-            # Add thin border around each wordmap for clarity
-            wordmap_rect = [x, y, x + wordmap_width, y + wordmap_height]
-            draw.rectangle(wordmap_rect, outline=(220, 220, 220), width=1)
+            # Add border around each small wordmap
+            wordmap_rect = [x, y, x + small_wordmap_width, y + small_wordmap_height]
+            draw.rectangle(wordmap_rect, outline=(150, 150, 150), width=1)
 
         # Add dimension labels at the top of the first word's grid
         if word_idx == 0:
-            for dim in range(n_embd):
-                row_in_grid = dim // grid_cols
+            for dim in range(min(n_embd, grid_cols)):  # Only show top row labels
                 col_in_grid = dim % grid_cols
-
-                if row_in_grid == 0:  # Only for top row
-                    x = (
-                        word_label_width
-                        + (col_in_grid * wordmap_width)
-                        + (wordmap_width // 2)
-                    )
-                    y = word_y_offset - 10
-                    draw.text(
-                        (x, y),
-                        f"D{dim}",
-                        fill=(100, 100, 100),
-                        font=font_small,
-                        anchor="mb",
-                    )
+                x = (
+                    word_label_width
+                    + (col_in_grid * small_wordmap_width)
+                    + (small_wordmap_width // 2)
+                )
+                y = word_y_offset - 15
+                draw.text(
+                    (x, y), f"D{dim}", fill=(80, 80, 80), font=font_small, anchor="mb"
+                )
 
     # Save the visualization
     output_path = os.path.join(output_dir, "sentence_flow.png")
