@@ -75,7 +75,7 @@ def tokenize_sentence(sentence, stoi):
 def create_sentence_flow_visualization(
     embeddings, words, token_ids, itos, output_dir, probe_sentence, model_dir
 ):
-    """Create visualization showing how sentence flows through embedding dimensions using actual wordmaps."""
+    """Create visualization showing how sentence flows through embedding dimensions using grid layout."""
 
     n_embd = embeddings.shape[1]
     n_words = len(words)
@@ -119,27 +119,40 @@ def create_sentence_flow_visualization(
     min_val, max_val = all_values.min(), all_values.max()
     print(f"Embedding value range: {min_val:.3f} to {max_val:.3f}")
 
-    # Create a large figure
-    cell_width = 4  # inches per cell
-    cell_height = 3  # inches per cell
-    fig_width = n_embd * cell_width
-    fig_height = n_words * cell_height
+    # Calculate grid dimensions (try to make it roughly square)
+    grid_cols = int(np.ceil(np.sqrt(n_embd)))
+    grid_rows = int(np.ceil(n_embd / grid_cols))
+    print(f"Using {grid_rows}×{grid_cols} grid for {n_embd} dimensions")
 
-    fig, axes = plt.subplots(n_words, n_embd, figsize=(fig_width, fig_height))
+    # Create visualization for each word separately
+    word_images = []
 
-    # Handle case where we only have one word or one dimension
-    if n_words == 1:
-        axes = axes.reshape(1, -1)
-    elif n_embd == 1:
-        axes = axes.reshape(-1, 1)
-
-    # Create visualization for each word-dimension pair
     for word_idx, (word, embedding) in enumerate(zip(words, word_embeddings)):
-        for dim_idx in range(n_embd):
-            ax = axes[word_idx, dim_idx]
+        print(f"Creating grid for word '{word}' ({word_idx + 1}/{n_words})")
+
+        # Create figure for this word with larger wordmaps
+        wordmap_size = 4  # inches per wordmap
+        fig_width = grid_cols * wordmap_size
+        fig_height = grid_rows * wordmap_size
+
+        fig, axes = plt.subplots(grid_rows, grid_cols, figsize=(fig_width, fig_height))
+
+        # Handle single row/column cases
+        if grid_rows == 1:
+            axes = axes.reshape(1, -1)
+        elif grid_cols == 1:
+            axes = axes.reshape(-1, 1)
+        elif grid_rows == 1 and grid_cols == 1:
+            axes = np.array([[axes]])
+
+        # Fill the grid
+        for dim in range(n_embd):
+            row = dim // grid_cols
+            col = dim % grid_cols
+            ax = axes[row, col]
 
             # Get the embedding value for this word in this dimension
-            embed_value = embedding[dim_idx]
+            embed_value = embedding[dim]
 
             # Normalize to [0, 1] for opacity (use percentile-based mapping for better contrast)
             if max_val != min_val:
@@ -157,8 +170,8 @@ def create_sentence_flow_visualization(
                 opacity = 0.5
 
             # Show the wordmap for this dimension
-            if dim_idx in wordmap_images:
-                wordmap_img = wordmap_images[dim_idx]
+            if dim in wordmap_images:
+                wordmap_img = wordmap_images[dim]
 
                 # Apply color tint based on positive/negative value
                 if embed_value >= 0:
@@ -179,8 +192,8 @@ def create_sentence_flow_visualization(
                 ax.text(
                     0.5,
                     0.5,
-                    f"Dim {dim_idx}\n{embed_value:.3f}",
-                    fontsize=8,
+                    f"Dim {dim}\n{embed_value:.3f}",
+                    fontsize=12,
                     ha="center",
                     va="center",
                     alpha=opacity,
@@ -191,44 +204,55 @@ def create_sentence_flow_visualization(
             ax.set_xticks([])
             ax.set_yticks([])
 
-            # Add value as title
-            ax.set_title(f"{embed_value:.3f}", fontsize=10, pad=5)
+            # Add dimension label and value
+            ax.set_title(f"Dim {dim}\n{embed_value:.3f}", fontsize=12, pad=10)
 
             # Add border with color indicating positive/negative
             border_color = "black" if embed_value >= 0 else "red"
+            border_width = 3 if abs(embed_value) > np.std(all_abs_values) else 1
             for spine in ax.spines.values():
                 spine.set_edgecolor(border_color)
-                spine.set_linewidth(2)
+                spine.set_linewidth(border_width)
 
-    # Add row and column labels
-    for word_idx, word in enumerate(words):
-        axes[word_idx, 0].set_ylabel(
-            word, fontsize=14, rotation=0, ha="right", va="center", weight="bold"
+        # Hide unused subplots
+        for dim in range(n_embd, grid_rows * grid_cols):
+            row = dim // grid_cols
+            col = dim % grid_cols
+            axes[row, col].set_visible(False)
+
+        plt.suptitle(
+            f'Word: "{word}" - Embedding Activations\n'
+            f"Grid: {grid_rows}×{grid_cols} | Values: {embedding.min():.3f} to {embedding.max():.3f}",
+            fontsize=18,
+            y=0.98,
+        )
+        plt.tight_layout()
+
+        # Save individual word visualization
+        word_output_path = os.path.join(output_dir, f"word_{word_idx}_{word}.png")
+        plt.savefig(word_output_path, dpi=200, bbox_inches="tight")
+        plt.close()
+
+        word_images.append(
+            {
+                "word": word,
+                "filename": f"word_{word_idx}_{word}.png",
+                "path": word_output_path,
+            }
         )
 
-    for dim_idx in range(n_embd):
-        axes[0, dim_idx].set_xlabel(f"Dimension {dim_idx}", fontsize=12, weight="bold")
-        axes[0, dim_idx].xaxis.set_label_position("top")
-
-    plt.suptitle(
-        f'Sentence Flow Through Embedding Space\nProbe: "{probe_sentence}"\n'
-        f"Wordmaps shown with opacity based on activation strength",
-        fontsize=16,
-        y=0.98,
-    )
-    plt.tight_layout()
-
-    # Save the visualization
-    output_path = os.path.join(output_dir, "sentence_flow.png")
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")  # Lower DPI for large images
-    plt.close()
-
-    print(f"Saved sentence flow visualization: {output_path}")
-    return output_path
+    print(f"Saved {len(word_images)} word visualizations")
+    return word_images
 
 
 def generate_html_page(
-    output_dir, model_name, probe_sentence, words, n_embd, word_embeddings=None
+    output_dir,
+    model_name,
+    probe_sentence,
+    words,
+    n_embd,
+    word_embeddings=None,
+    word_images=None,
 ):
     """Generate HTML page for the sentence flow visualization."""
 
@@ -266,6 +290,46 @@ def generate_html_page(
                 </div>
             </div>"""
 
+    # Create word navigation and visualizations
+    word_nav_html = ""
+    word_visualizations_html = ""
+
+    if word_images:
+        # Navigation tabs
+        word_nav_html = """
+            <div class="word-navigation">
+                <h3>Select Word to Visualize:</h3>
+                <div class="word-tabs">"""
+
+        for i, word_info in enumerate(word_images):
+            active_class = "active" if i == 0 else ""
+            word_nav_html += f"""
+                <button class="word-tab {active_class}" onclick="showWord({i})">{word_info['word']}</button>"""
+
+        word_nav_html += """
+                </div>
+            </div>"""
+
+        # Word visualizations
+        for i, word_info in enumerate(word_images):
+            display_style = "block" if i == 0 else "none"
+            word_visualizations_html += f"""
+            <div class="word-visualization" id="word_{i}" style="display: {display_style};">
+                <div class="zoom-container" id="zoomContainer_{i}">
+                    <div class="zoom-controls">
+                        <button class="zoom-btn" onclick="zoomIn({i})">+</button>
+                        <button class="zoom-btn" onclick="zoomOut({i})">−</button>
+                        <button class="zoom-btn" onclick="resetZoom({i})">Reset</button>
+                        <button class="zoom-btn fullscreen-btn" onclick="toggleFullscreen({i})" id="fullscreenBtn_{i}">⛶ Fullscreen</button>
+                    </div>
+                    <img id="mainImage_{i}" src="{word_info['filename']}" alt="Word {word_info['word']} Visualization" style="width: 100%; height: auto;">
+                </div>
+            </div>"""
+
+    # Calculate grid dimensions for display
+    grid_cols = int(np.ceil(np.sqrt(n_embd)))
+    grid_rows = int(np.ceil(n_embd / grid_cols))
+
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -280,7 +344,7 @@ def generate_html_page(
             background: #f5f5f5;
         }}
         .container {{
-            max-width: 1600px;
+            max-width: 1800px;
             margin: 0 auto;
             background: white;
             border-radius: 8px;
@@ -304,19 +368,47 @@ def generate_html_page(
         .content {{
             padding: 30px;
         }}
-        .visualization {{
+        .word-navigation {{
+            margin: 20px 0;
             text-align: center;
+        }}
+        .word-tabs {{
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }}
+        .word-tab {{
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            color: #495057;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }}
+        .word-tab:hover {{
+            background: #e9ecef;
+            border-color: #adb5bd;
+        }}
+        .word-tab.active {{
+            background: #667eea;
+            border-color: #667eea;
+            color: white;
+        }}
+        .word-visualization {{
             margin: 30px 0;
-            position: relative;
         }}
         .zoom-container {{
             border: 2px solid #ddd;
             border-radius: 8px;
-            overflow: hidden;
-            position: relative;
-            max-height: 80vh;
             overflow: auto;
+            position: relative;
             background: white;
+            max-height: 85vh;
         }}
         .zoom-container.fullscreen {{
             position: fixed;
@@ -330,10 +422,9 @@ def generate_html_page(
         }}
         .zoom-container img {{
             display: block;
-            width: 100%;
-            height: auto;
-            transition: transform 0.2s;
             cursor: grab;
+            transition: transform 0.1s;
+            transform-origin: center center;
         }}
         .zoom-container img:active {{
             cursor: grabbing;
@@ -342,21 +433,24 @@ def generate_html_page(
             position: absolute;
             top: 10px;
             right: 10px;
-            background: rgba(255,255,255,0.9);
-            border-radius: 5px;
-            padding: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: rgba(255,255,255,0.95);
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
             z-index: 1001;
+            display: flex;
+            gap: 8px;
         }}
         .zoom-btn {{
             background: #667eea;
             color: white;
             border: none;
-            padding: 5px 10px;
-            margin: 0 2px;
-            border-radius: 3px;
+            padding: 8px 12px;
+            border-radius: 5px;
             cursor: pointer;
             font-size: 14px;
+            font-weight: bold;
+            transition: background 0.2s;
         }}
         .zoom-btn:hover {{
             background: #5a67d8;
@@ -420,23 +514,6 @@ def generate_html_page(
             border-radius: 8px;
             margin: 20px 0;
         }}
-        .legend {{
-            display: flex;
-            justify-content: center;
-            gap: 30px;
-            margin: 20px 0;
-            flex-wrap: wrap;
-        }}
-        .legend-item {{
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }}
-        .legend-color {{
-            width: 20px;
-            height: 20px;
-            border-radius: 3px;
-        }}
         .stats {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -460,9 +537,9 @@ def generate_html_page(
         }}
         .instructions {{
             background: #e3f2fd;
-            padding: 15px;
+            padding: 20px;
             border-radius: 8px;
-            margin: 15px 0;
+            margin: 20px 0;
             border-left: 4px solid #2196f3;
         }}
     </style>
@@ -473,7 +550,7 @@ def generate_html_page(
             <h1>Sentence Flow Visualization</h1>
             <p><strong>Model:</strong> {model_name}</p>
             <p><strong>Probe Sentence:</strong> "{probe_sentence}"</p>
-            <p><strong>Embedding Dimensions:</strong> {n_embd}</p>
+            <p><strong>Layout:</strong> {grid_rows}×{grid_cols} grid for {n_embd} dimensions</p>
         </div>
 
         <div class="content">
@@ -487,173 +564,165 @@ def generate_html_page(
                     <div class="value">{n_embd}</div>
                 </div>
                 <div class="stat-card">
-                    <h3>Total Cells</h3>
-                    <div class="value">{len(words) * n_embd}</div>
+                    <h3>Grid Layout</h3>
+                    <div class="value">{grid_rows}×{grid_cols}</div>
                 </div>
-            </div>
-
-            <div class="info">
-                <h3>How to Read This Visualization</h3>
-                <p>This visualization shows how each word in the probe sentence activates the learned embedding dimensions:</p>
-                <ul>
-                    <li><strong>Rows:</strong> Each word in the sentence ("{'" ", "'.join(words)}")</li>
-                    <li><strong>Columns:</strong> Each embedding dimension (0 to {n_embd-1})</li>
-                    <li><strong>Wordmaps:</strong> Each cell shows the learned word cloud for that dimension</li>
-                    <li><strong>Opacity:</strong> How transparent/opaque the wordmap appears indicates activation strength</li>
-                    <li><strong>Border Color:</strong> Black borders for positive activation, red for negative</li>
-                    <li><strong>Numbers:</strong> The exact embedding value for that word-dimension pair</li>
-                </ul>
-                <p><em>Note: You must run visualize_tokens.py first to generate the embedding wordmaps.</em></p>
             </div>
 
             <div class="instructions">
-                <strong>🔍 Interaction Instructions:</strong>
+                <strong>🔍 How to Use:</strong>
                 <ul>
-                    <li><strong>Zoom:</strong> Use mouse wheel to zoom in/out on the visualization</li>
+                    <li><strong>Word Tabs:</strong> Click on word tabs above to switch between different word visualizations</li>
+                    <li><strong>Zoom:</strong> Use mouse wheel or +/- buttons to zoom in/out</li>
                     <li><strong>Pan:</strong> Click and drag to move around when zoomed in</li>
-                    <li><strong>Fullscreen:</strong> Click the fullscreen button for maximum viewing area</li>
-                    <li><strong>Reset:</strong> Use the zoom controls to reset view</li>
-                    <li><strong>Data Table:</strong> Scroll down to see exact numerical values</li>
+                    <li><strong>Fullscreen:</strong> Click fullscreen button for maximum viewing area</li>
+                    <li><strong>Grid Layout:</strong> Each word shows a {grid_rows}×{grid_cols} grid of larger wordmaps</li>
+                    <li><strong>Opacity:</strong> Wordmap opacity indicates activation strength for that dimension</li>
+                    <li><strong>Borders:</strong> Thick borders indicate high activation, thin borders indicate low activation</li>
                 </ul>
             </div>
 
-            <div class="legend">
-                <div class="legend-item">
-                    <div class="legend-color" style="background: black; border: 2px solid black;"></div>
-                    <span>Positive Activation</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: red; border: 2px solid red;"></div>
-                    <span>Negative Activation</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: rgba(0,0,0,0.3);"></div>
-                    <span>Low Opacity = Weak Activation</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: rgba(0,0,0,1);"></div>
-                    <span>High Opacity = Strong Activation</span>
-                </div>
-            </div>
+            {word_nav_html}
 
-            <div class="visualization">
-                <div class="zoom-container" id="zoomContainer">
-                    <div class="zoom-controls">
-                        <button class="zoom-btn" onclick="zoomIn()">+</button>
-                        <button class="zoom-btn" onclick="zoomOut()">−</button>
-                        <button class="zoom-btn" onclick="resetZoom()">Reset</button>
-                        <button class="zoom-btn fullscreen-btn" onclick="toggleFullscreen()" id="fullscreenBtn">⛶ Fullscreen</button>
-                    </div>
-                    <img id="mainImage" src="sentence_flow.png" alt="Sentence Flow Visualization">
-                </div>
-            </div>
+            {word_visualizations_html}
 
             {data_table_html}
 
             <div class="info">
-                <h3>Interpretation</h3>
-                <p>This visualization helps you understand:</p>
+                <h3>Understanding the Grid Layout</h3>
+                <p>Each word now has its own {grid_rows}×{grid_cols} grid showing all {n_embd} embedding dimensions:</p>
                 <ul>
-                    <li>Which dimensions are most activated by each word</li>
-                    <li>How different words have different activation patterns</li>
-                    <li>Whether certain dimensions specialize in certain types of words</li>
-                    <li>The overall distribution of information across the embedding space</li>
+                    <li><strong>Each cell</strong> shows the wordmap for one dimension</li>
+                    <li><strong>Opacity</strong> indicates how strongly that word activates that dimension</li>
+                    <li><strong>Border thickness</strong> shows activation strength relative to other dimensions</li>
+                    <li><strong>Colors:</strong> Black borders = positive activation, red borders = negative activation</li>
+                    <li><strong>Grid layout</strong> makes it easier to see patterns and compare dimensions</li>
                 </ul>
             </div>
         </div>
     </div>
 
     <script>
-        let currentZoom = 1;
-        let isDragging = false;
-        let startX, startY, scrollLeft, scrollTop;
-        let isFullscreen = false;
+        let currentZoom = Array({len(words)}).fill(1);
+        let isFullscreen = Array({len(words)}).fill(false);
+        let currentWord = 0;
 
-        const container = document.getElementById('zoomContainer');
-        const image = document.getElementById('mainImage');
-        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        function showWord(wordIndex) {{
+            // Hide all word visualizations
+            for (let i = 0; i < {len(words)}; i++) {{
+                document.getElementById(`word_${{i}}`).style.display = 'none';
+                document.querySelectorAll('.word-tab')[i].classList.remove('active');
+            }}
+
+            // Show selected word
+            document.getElementById(`word_${{wordIndex}}`).style.display = 'block';
+            document.querySelectorAll('.word-tab')[wordIndex].classList.add('active');
+            currentWord = wordIndex;
+        }}
 
         // Zoom functionality
-        container.addEventListener('wheel', function(e) {{
-            e.preventDefault();
-            const delta = e.deltaY > 0 ? 0.9 : 1.1;
-            currentZoom *= delta;
-            currentZoom = Math.max(0.5, Math.min(currentZoom, 10));
-            image.style.transform = `scale(${{currentZoom}})`;
-        }});
+        function setupZoomForWord(wordIndex) {{
+            const container = document.getElementById(`zoomContainer_${{wordIndex}}`);
+            const image = document.getElementById(`mainImage_${{wordIndex}}`);
 
-        // Pan functionality
-        container.addEventListener('mousedown', function(e) {{
-            isDragging = true;
-            startX = e.pageX - container.offsetLeft;
-            startY = e.pageY - container.offsetTop;
-            scrollLeft = container.scrollLeft;
-            scrollTop = container.scrollTop;
-            container.style.cursor = 'grabbing';
-        }});
+            let isDragging = false;
+            let startX, startY, startScrollLeft, startScrollTop;
 
-        container.addEventListener('mouseleave', function() {{
-            isDragging = false;
-            container.style.cursor = 'grab';
-        }});
+            container.addEventListener('wheel', function(e) {{
+                e.preventDefault();
+                const rect = container.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
 
-        container.addEventListener('mouseup', function() {{
-            isDragging = false;
-            container.style.cursor = 'grab';
-        }});
+                const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                currentZoom[wordIndex] *= delta;
+                currentZoom[wordIndex] = Math.max(0.3, Math.min(currentZoom[wordIndex], 15));
 
-        container.addEventListener('mousemove', function(e) {{
-            if (!isDragging) return;
-            e.preventDefault();
-            const x = e.pageX - container.offsetLeft;
-            const y = e.pageY - container.offsetTop;
-            const walkX = (x - startX) * 2;
-            const walkY = (y - startY) * 2;
-            container.scrollLeft = scrollLeft - walkX;
-            container.scrollTop = scrollTop - walkY;
-        }});
+                // Calculate new scroll position to zoom toward mouse
+                const scrollX = (container.scrollLeft + x) * delta - x;
+                const scrollY = (container.scrollTop + y) * delta - y;
 
-        // Zoom control buttons
-        function zoomIn() {{
-            currentZoom *= 1.2;
-            currentZoom = Math.min(currentZoom, 10);
-            image.style.transform = `scale(${{currentZoom}})`;
+                image.style.transform = `scale(${{currentZoom[wordIndex]}})`;
+
+                // Adjust scroll position after zoom
+                setTimeout(() => {{
+                    container.scrollLeft = scrollX;
+                    container.scrollTop = scrollY;
+                }}, 10);
+            }});
+
+            // Pan functionality
+            container.addEventListener('mousedown', function(e) {{
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startScrollLeft = container.scrollLeft;
+                startScrollTop = container.scrollTop;
+                container.style.cursor = 'grabbing';
+            }});
+
+            document.addEventListener('mousemove', function(e) {{
+                if (!isDragging) return;
+                e.preventDefault();
+                const deltaX = e.clientX - startX;
+                const deltaY = e.clientY - startY;
+                container.scrollLeft = startScrollLeft - deltaX;
+                container.scrollTop = startScrollTop - deltaY;
+            }});
+
+            document.addEventListener('mouseup', function() {{
+                isDragging = false;
+                container.style.cursor = 'grab';
+            }});
         }}
 
-        function zoomOut() {{
-            currentZoom *= 0.8;
-            currentZoom = Math.max(currentZoom, 0.5);
-            image.style.transform = `scale(${{currentZoom}})`;
+        // Initialize zoom for all words
+        for (let i = 0; i < {len(words)}; i++) {{
+            setupZoomForWord(i);
         }}
 
-        function resetZoom() {{
-            currentZoom = 1;
+        function zoomIn(wordIndex) {{
+            currentZoom[wordIndex] *= 1.3;
+            currentZoom[wordIndex] = Math.min(currentZoom[wordIndex], 15);
+            document.getElementById(`mainImage_${{wordIndex}}`).style.transform = `scale(${{currentZoom[wordIndex]}})`;
+        }}
+
+        function zoomOut(wordIndex) {{
+            currentZoom[wordIndex] *= 0.7;
+            currentZoom[wordIndex] = Math.max(currentZoom[wordIndex], 0.3);
+            document.getElementById(`mainImage_${{wordIndex}}`).style.transform = `scale(${{currentZoom[wordIndex]}})`;
+        }}
+
+        function resetZoom(wordIndex) {{
+            currentZoom[wordIndex] = 1;
+            const container = document.getElementById(`zoomContainer_${{wordIndex}}`);
+            const image = document.getElementById(`mainImage_${{wordIndex}}`);
             image.style.transform = 'scale(1)';
             container.scrollLeft = 0;
             container.scrollTop = 0;
         }}
 
-        // Fullscreen functionality
-        function toggleFullscreen() {{
-            if (!isFullscreen) {{
+        function toggleFullscreen(wordIndex) {{
+            const container = document.getElementById(`zoomContainer_${{wordIndex}}`);
+            const btn = document.getElementById(`fullscreenBtn_${{wordIndex}}`);
+
+            if (!isFullscreen[wordIndex]) {{
                 container.classList.add('fullscreen');
-                fullscreenBtn.textContent = '✕ Exit Fullscreen';
-                isFullscreen = true;
-                // Prevent body scroll when in fullscreen
+                btn.textContent = '✕ Exit';
+                isFullscreen[wordIndex] = true;
                 document.body.style.overflow = 'hidden';
             }} else {{
                 container.classList.remove('fullscreen');
-                fullscreenBtn.textContent = '⛶ Fullscreen';
-                isFullscreen = false;
-                // Restore body scroll
+                btn.textContent = '⛶ Fullscreen';
+                isFullscreen[wordIndex] = false;
                 document.body.style.overflow = 'auto';
             }}
         }}
 
         // Escape key to exit fullscreen
         document.addEventListener('keydown', function(e) {{
-            if (e.key === 'Escape' && isFullscreen) {{
-                toggleFullscreen();
+            if (e.key === 'Escape' && isFullscreen[currentWord]) {{
+                toggleFullscreen(currentWord);
             }}
         }});
     </script>
@@ -708,7 +777,7 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     # Generate visualization
-    create_sentence_flow_visualization(
+    word_images = create_sentence_flow_visualization(
         embeddings, words, token_ids, itos, output_dir, probe_sentence, model_dir
     )
 
@@ -720,6 +789,7 @@ def main():
         words,
         embeddings.shape[1],
         word_embeddings,
+        word_images,
     )
 
     print(f"\nDone! Sentence flow visualization saved to: {output_dir}/")
