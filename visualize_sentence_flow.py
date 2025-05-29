@@ -30,17 +30,21 @@ def load_checkpoint(checkpoint_path):
     model_args = checkpoint["model_args"]
     vocab_size = model_args["vocab_size"]
     n_embd = model_args["n_embd"]
+    block_size = model_args.get("block_size", 1024)
 
     print(f"Model vocabulary size: {vocab_size}")
     print(f"Embedding dimension: {n_embd}")
+    print(f"Block size: {block_size}")
 
-    # Extract token embeddings from model state
+    # Extract token embeddings and positional encodings from model state
     model_state = checkpoint["model"]
-    embeddings = model_state["transformer.wte.weight"]  # [vocab_size, n_embd]
+    token_embeddings = model_state["transformer.wte.weight"]  # [vocab_size, n_embd]
+    pos_embeddings = model_state["transformer.wpe.weight"]  # [block_size, n_embd]
 
-    print(f"Embeddings shape: {embeddings.shape}")
+    print(f"Token embeddings shape: {token_embeddings.shape}")
+    print(f"Positional embeddings shape: {pos_embeddings.shape}")
 
-    return embeddings, vocab_size, model_args
+    return token_embeddings, pos_embeddings, vocab_size, model_args
 
 
 def load_tokenizer():
@@ -72,16 +76,64 @@ def tokenize_sentence(sentence, stoi):
     return words, token_ids
 
 
+class RepresentationHandler:
+    """Handles different types of representations: embeddings, positional, combined."""
+
+    def __init__(self, token_embeddings, pos_embeddings):
+        self.token_embeddings = token_embeddings
+        self.pos_embeddings = pos_embeddings
+        self.n_embd = token_embeddings.shape[1]
+
+    def get_representation(self, token_ids, representation_type="embeddings"):
+        """Get representations for given token IDs."""
+        word_representations = []
+
+        for i, token_id in enumerate(token_ids):
+            if token_id < self.token_embeddings.shape[0]:
+                token_emb = self.token_embeddings[token_id].numpy()
+
+                if representation_type == "embeddings":
+                    word_representations.append(token_emb)
+                elif representation_type == "positional":
+                    if i < self.pos_embeddings.shape[0]:
+                        pos_emb = self.pos_embeddings[i].numpy()
+                        word_representations.append(pos_emb)
+                    else:
+                        word_representations.append(np.zeros(self.n_embd))
+                elif representation_type == "combined":
+                    if i < self.pos_embeddings.shape[0]:
+                        pos_emb = self.pos_embeddings[i].numpy()
+                        combined = token_emb + pos_emb
+                        word_representations.append(combined)
+                    else:
+                        word_representations.append(token_emb)
+                else:
+                    raise ValueError(
+                        f"Unknown representation type: {representation_type}"
+                    )
+            else:
+                word_representations.append(np.zeros(self.n_embd))
+
+        return word_representations
+
+
 def create_sentence_flow_visualization(
-    embeddings, words, token_ids, itos, output_dir, probe_sentence, model_dir
+    representation_handler,
+    words,
+    token_ids,
+    itos,
+    output_dir,
+    probe_sentence,
+    model_dir,
+    representation_type="embeddings",
 ):
     """Create visualization by directly composing wordmap images with PIL for zero whitespace."""
 
-    n_embd = embeddings.shape[1]
+    n_embd = representation_handler.n_embd
     n_words = len(words)
 
     print(
-        f"Creating sentence flow visualization for {n_words} words across {n_embd} dimensions"
+        f"Creating {representation_type} visualization for {n_words} words across {n_embd} dimensions"
     )
 
     # Load existing wordmap images
@@ -112,13 +164,10 @@ def create_sentence_flow_visualization(
 
     print(f"Wordmap size: {wordmap_size}")
 
-    # Get embedding values for each word
-    word_embeddings = []
-    for token_id in token_ids:
-        if token_id < embeddings.shape[0]:
-            word_embeddings.append(embeddings[token_id].numpy())
-        else:
-            word_embeddings.append(np.zeros(n_embd))
+    # Get embedding values for each word using the representation handler
+    word_embeddings = representation_handler.get_representation(
+        token_ids, representation_type
+    )
 
     # Normalize embeddings for opacity mapping
     all_values = np.array(word_embeddings).flatten()
@@ -220,11 +269,7 @@ def create_sentence_flow_visualization(
 
         # Add word index below
         draw.text(
-            (label_x, label_y + 50),
-            "",
-            fill=(60, 60, 60),
-            font=font_large,
-            anchor="lm",
+            (label_x, label_y + 50), "", fill=(60, 60, 60), font=font_large, anchor="lm"
         )
 
         # Process each dimension for this word
@@ -300,56 +345,81 @@ def create_sentence_flow_visualization(
                 )
 
     # Save the visualization
-    output_path = os.path.join(output_dir, "sentence_flow.png")
+    output_path = os.path.join(output_dir, f"sentence_flow_{representation_type}.png")
     canvas.save(output_path, "PNG")
-    plt.close()  # Close any matplotlib figures
 
-    print(f"Saved sentence flow visualization: {output_path}")
-    return output_path
+    print(f"Saved {representation_type} sentence flow visualization: {output_path}")
+    return output_path, word_embeddings
 
 
 def generate_html_page(
-    output_dir, model_name, probe_sentence, words, n_embd, word_embeddings=None
+    output_dir, model_name, probe_sentence, words, n_embd, all_word_embeddings=None
 ):
-    """Generate simple HTML page for the sentence flow visualization."""
+    """Generate HTML page with tabs for different representation types."""
 
     # Calculate grid dimensions for display
     grid_cols = int(np.ceil(np.sqrt(n_embd)))
     grid_rows = int(np.ceil(n_embd / grid_cols))
 
-    # Create data table if we have embeddings
-    data_table_html = ""
-    if word_embeddings is not None:
-        data_table_html = f"""
-            <div class="data-section">
-                <h3>Exact Embedding Values</h3>
-                <div class="table-container">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Word</th>"""
+    # Create data tables for each representation type if we have embeddings
+    data_tables_html = ""
+    if all_word_embeddings:
+        for rep_type, word_embeddings in all_word_embeddings.items():
+            data_tables_html += f"""
+                <div class="data-section" id="data_{rep_type}" style="display: none;">
+                    <h3>Exact {rep_type.title()} Values</h3>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Word</th>"""
 
-        for dim in range(n_embd):
-            data_table_html += f"<th>D{dim}</th>"
-
-        data_table_html += """
-                            </tr>
-                        </thead>
-                        <tbody>"""
-
-        for word_idx, (word, embedding) in enumerate(zip(words, word_embeddings)):
-            data_table_html += f"<tr><td class='word-cell'><strong>{word}</strong></td>"
             for dim in range(n_embd):
-                value = embedding[dim]
-                cell_class = "positive" if value >= 0 else "negative"
-                data_table_html += f"<td class='{cell_class}'>{value:.3f}</td>"
-            data_table_html += "</tr>"
+                data_tables_html += f"<th>D{dim}</th>"
 
-        data_table_html += """
-                        </tbody>
-                    </table>
-                </div>
-            </div>"""
+            data_tables_html += """
+                                </tr>
+                            </thead>
+                            <tbody>"""
+
+            for word_idx, (word, embedding) in enumerate(zip(words, word_embeddings)):
+                data_tables_html += (
+                    f"<tr><td class='word-cell'><strong>{word}</strong></td>"
+                )
+                for dim in range(n_embd):
+                    value = embedding[dim]
+                    cell_class = "positive" if value >= 0 else "negative"
+                    data_tables_html += f"<td class='{cell_class}'>{value:.3f}</td>"
+                data_tables_html += "</tr>"
+
+            data_tables_html += """
+                            </tbody>
+                        </table>
+                    </div>
+                </div>"""
+
+    # Create visualization tabs
+    visualization_tabs_html = """
+        <div class="representation-tabs">
+            <h3>Representation Type:</h3>
+            <div class="tab-buttons">
+                <button class="tab-btn active" onclick="showRepresentation('embeddings')">Token Embeddings</button>
+                <button class="tab-btn" onclick="showRepresentation('positional')">Positional Encodings</button>
+                <button class="tab-btn" onclick="showRepresentation('combined')">Combined (Token + Position)</button>
+            </div>
+        </div>
+
+        <div class="visualizations-container">
+            <div class="visualization" id="viz_embeddings" style="display: block;">
+                <img src="sentence_flow_embeddings.png" alt="Token Embeddings Visualization">
+            </div>
+            <div class="visualization" id="viz_positional" style="display: none;">
+                <img src="sentence_flow_positional.png" alt="Positional Encodings Visualization">
+            </div>
+            <div class="visualization" id="viz_combined" style="display: none;">
+                <img src="sentence_flow_combined.png" alt="Combined Representation Visualization">
+            </div>
+        </div>"""
 
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -366,7 +436,7 @@ def generate_html_page(
             line-height: 1.6;
         }}
         .container {{
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             background: white;
             border-radius: 8px;
@@ -390,6 +460,41 @@ def generate_html_page(
         .content {{
             padding: 30px;
         }}
+        .representation-tabs {{
+            margin: 20px 0;
+            text-align: center;
+        }}
+        .tab-buttons {{
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }}
+        .tab-btn {{
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            color: #495057;
+            padding: 15px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+            min-width: 200px;
+        }}
+        .tab-btn:hover {{
+            background: #e9ecef;
+            border-color: #adb5bd;
+        }}
+        .tab-btn.active {{
+            background: #667eea;
+            border-color: #667eea;
+            color: white;
+        }}
+        .visualizations-container {{
+            margin: 30px 0;
+        }}
         .visualization {{
             text-align: center;
             margin: 30px 0;
@@ -397,7 +502,7 @@ def generate_html_page(
         .visualization img {{
             max-width: 100%;
             height: auto;
-            border: 1px solid #ddd;
+            border: 2px solid #ddd;
             border-radius: 8px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             background: white;
@@ -493,6 +598,23 @@ def generate_html_page(
             height: 20px;
             border-radius: 3px;
         }}
+        .data-toggle {{
+            text-align: center;
+            margin: 20px 0;
+        }}
+        .data-toggle button {{
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }}
+        .data-toggle button:hover {{
+            background: #218838;
+        }}
     </style>
 </head>
 <body>
@@ -521,18 +643,17 @@ def generate_html_page(
             </div>
 
             <div class="info">
-                <h3>How to Read This Visualization</h3>
-                <p>This visualization shows how each word in the probe sentence activates the learned embedding dimensions:</p>
+                <h3>Understanding the Representations</h3>
+                <p>This visualization shows three different representations of your probe sentence:</p>
                 <ul>
-                    <li><strong>Vertical Layout:</strong> Each word gets its own {grid_rows}×{grid_cols} grid, stacked vertically</li>
-                    <li><strong>Word Labels:</strong> On the left side of each grid block</li>
-                    <li><strong>Dimension Labels:</strong> At the top (D0, D1, D2, etc.)</li>
-                    <li><strong>Wordmaps:</strong> Each cell shows the learned word cloud for that dimension</li>
-                    <li><strong>Opacity:</strong> How strong the word activates that dimension</li>
-                    <li><strong>Colors:</strong> Black tint for positive activation, red tint for negative activation</li>
+                    <li><strong>Token Embeddings:</strong> The learned word representations from the vocabulary</li>
+                    <li><strong>Positional Encodings:</strong> Position-specific patterns that indicate where each word appears in the sequence</li>
+                    <li><strong>Combined (Token + Position):</strong> What the model actually sees - token embeddings plus positional encodings</li>
                 </ul>
-                <p><strong>🔍 Usage:</strong> Use your browser's native zoom (Cmd/Ctrl + mouse wheel) to examine details</p>
+                <p><strong>🔍 Usage:</strong> Switch between tabs to see how each representation affects the visualization. Use your browser's native zoom to examine details.</p>
             </div>
+
+            {visualization_tabs_html}
 
             <div class="legend">
                 <div class="legend-item">
@@ -549,24 +670,84 @@ def generate_html_page(
                 </div>
             </div>
 
-            <div class="visualization">
-                <img src="sentence_flow.png" alt="Sentence Flow Visualization">
+            <div class="data-toggle">
+                <button onclick="toggleDataTables()" id="dataToggleBtn">Show Exact Values</button>
             </div>
 
-            {data_table_html}
+            <div id="dataTables" style="display: none;">
+                {data_tables_html}
+            </div>
 
             <div class="info">
                 <h3>Interpretation Tips</h3>
-                <p>Look for patterns in the visualization:</p>
+                <p>Compare the three representations to understand:</p>
                 <ul>
-                    <li><strong>Word Similarities:</strong> Do similar words (like "knock" "knock") have similar activation patterns?</li>
-                    <li><strong>Dimension Specialization:</strong> Do certain dimensions consistently activate for specific types of words?</li>
-                    <li><strong>Sentence Structure:</strong> How do different parts of the sentence (greeting vs. names) activate differently?</li>
-                    <li><strong>Activation Strength:</strong> Which dimensions are most important for each word?</li>
+                    <li><strong>Token vs Position:</strong> How much does word meaning vs word position contribute to each dimension?</li>
+                    <li><strong>Positional Patterns:</strong> Do you see regular patterns in the positional encodings?</li>
+                    <li><strong>Combined Effects:</strong> How does adding position change the token representations?</li>
+                    <li><strong>Word Differences:</strong> How do identical words (like "knock" "knock") differ when position is added?</li>
                 </ul>
             </div>
         </div>
     </div>
+
+    <script>
+        let currentRepresentation = 'embeddings';
+        let dataVisible = false;
+
+        function showRepresentation(repType) {{
+            // Hide all visualizations
+            document.querySelectorAll('.visualization').forEach(viz => {{
+                viz.style.display = 'none';
+            }});
+            document.querySelectorAll('.data-section').forEach(data => {{
+                data.style.display = 'none';
+            }});
+
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab-btn').forEach(btn => {{
+                btn.classList.remove('active');
+            }});
+
+            // Show selected visualization
+            document.getElementById(`viz_${{repType}}`).style.display = 'block';
+
+            // Show corresponding data table if data is visible
+            if (dataVisible) {{
+                const dataSection = document.getElementById(`data_${{repType}}`);
+                if (dataSection) {{
+                    dataSection.style.display = 'block';
+                }}
+            }}
+
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+            currentRepresentation = repType;
+        }}
+
+        function toggleDataTables() {{
+            const dataTables = document.getElementById('dataTables');
+            const toggleBtn = document.getElementById('dataToggleBtn');
+
+            if (dataVisible) {{
+                dataTables.style.display = 'none';
+                toggleBtn.textContent = 'Show Exact Values';
+                dataVisible = false;
+            }} else {{
+                dataTables.style.display = 'block';
+                toggleBtn.textContent = 'Hide Exact Values';
+                // Show the current representation's data
+                document.querySelectorAll('.data-section').forEach(data => {{
+                    data.style.display = 'none';
+                }});
+                const currentData = document.getElementById(`data_${{currentRepresentation}}`);
+                if (currentData) {{
+                    currentData.style.display = 'block';
+                }}
+                dataVisible = true;
+            }}
+        }}
+    </script>
 </body>
 </html>"""
 
@@ -593,7 +774,9 @@ def main():
     print(f"Using probe sentence: '{probe_sentence}'")
 
     # Load model and tokenizer
-    embeddings, vocab_size, model_args = load_checkpoint(checkpoint_path)
+    embeddings, pos_embeddings, vocab_size, model_args = load_checkpoint(
+        checkpoint_path
+    )
     stoi, itos = load_tokenizer()
 
     if stoi is None:
@@ -604,13 +787,8 @@ def main():
     words, token_ids = tokenize_sentence(probe_sentence, stoi)
     print(f"Tokenized: {words} -> {token_ids}")
 
-    # Get embedding values for each word (for the data table)
-    word_embeddings = []
-    for token_id in token_ids:
-        if token_id < embeddings.shape[0]:
-            word_embeddings.append(embeddings[token_id].numpy())
-        else:
-            word_embeddings.append(np.zeros(embeddings.shape[1]))
+    # Create representation handler
+    representation_handler = RepresentationHandler(embeddings, pos_embeddings)
 
     # Create output directory
     model_dir = os.path.basename(os.path.dirname(checkpoint_path))
@@ -618,23 +796,32 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     # Generate visualization
-    visualization_path = create_sentence_flow_visualization(
-        embeddings, words, token_ids, itos, output_dir, probe_sentence, model_dir
+    all_word_embeddings = {}
+    for representation_type in ["embeddings", "positional", "combined"]:
+        visualization_path, word_embeddings = create_sentence_flow_visualization(
+            representation_handler,
+            words,
+            token_ids,
+            itos,
+            output_dir,
+            probe_sentence,
+            model_dir,
+            representation_type,
+        )
+        all_word_embeddings[representation_type] = word_embeddings
+
+    # Generate HTML page with all representations
+    generate_html_page(
+        output_dir,
+        model_dir,
+        probe_sentence,
+        words,
+        embeddings.shape[1],
+        all_word_embeddings,
     )
 
-    if visualization_path:
-        # Generate HTML page
-        generate_html_page(
-            output_dir,
-            model_dir,
-            probe_sentence,
-            words,
-            embeddings.shape[1],
-            word_embeddings,
-        )
-
-        print(f"\nDone! Sentence flow visualization saved to: {output_dir}/")
-        print(f"View at: {output_dir}/index.html")
+    print(f"\nDone! Sentence flow visualization saved to: {output_dir}/")
+    print(f"View at: {output_dir}/index.html")
 
 
 if __name__ == "__main__":
