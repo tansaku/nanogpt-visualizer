@@ -234,16 +234,223 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     n_embd = embeddings.shape[1]
-    dimensions_to_visualize = min(5, n_embd)
+    # Generate all dimensions instead of just first 5
+    dimensions_to_visualize = n_embd
 
-    print(f"Creating visualizations for {dimensions_to_visualize} dimensions...")
+    print(f"Creating visualizations for all {dimensions_to_visualize} dimensions...")
     print(f"Output directory: {output_dir}")
 
     for dim in range(dimensions_to_visualize):
         create_word_cloud(embeddings, vocab, dim, output_dir)
+        if (dim + 1) % 10 == 0:
+            print(f"  Completed {dim + 1}/{dimensions_to_visualize} dimensions")
+
+    # Generate HTML index page
+    generate_html_index(
+        output_dir, model_dir, model_args, vocab_size, dimensions_to_visualize
+    )
 
     print(f"\nDone! Visualizations saved to: {output_dir}/")
     print(f"Created {dimensions_to_visualize} word cloud images")
+    print(f"View at: {output_dir}/index.html")
+
+
+def generate_html_index(output_dir, model_name, model_args, vocab_size, num_dimensions):
+    """Generate an HTML index page for viewing all embedding dimensions."""
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Embedding Visualizations - {model_name}</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }}
+        .header h1 {{
+            margin: 0 0 10px 0;
+            font-size: 2em;
+        }}
+        .header p {{
+            margin: 5px 0;
+            opacity: 0.9;
+        }}
+        .content {{
+            padding: 30px;
+        }}
+        .grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }}
+        .dimension-card {{
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }}
+        .dimension-card:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }}
+        .dimension-card img {{
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+        }}
+        .dimension-card .info {{
+            padding: 15px;
+            text-align: center;
+        }}
+        .dimension-card .info h3 {{
+            margin: 0 0 5px 0;
+            color: #333;
+        }}
+        .modal {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }}
+        .modal img {{
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 8px;
+        }}
+        .modal .close {{
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            color: white;
+            font-size: 30px;
+            cursor: pointer;
+        }}
+        .stats {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }}
+        .stat-card {{
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }}
+        .stat-card h3 {{
+            margin: 0 0 10px 0;
+            color: #495057;
+        }}
+        .stat-card .value {{
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Embedding Visualizations</h1>
+            <p><strong>Model:</strong> {model_name}</p>
+            <p><strong>Vocabulary Size:</strong> {vocab_size:,} tokens</p>
+            <p><strong>Embedding Dimensions:</strong> {num_dimensions}</p>
+        </div>
+
+        <div class="content">
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>Vocabulary Size</h3>
+                    <div class="value">{vocab_size:,}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Embedding Dimensions</h3>
+                    <div class="value">{num_dimensions}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Parameters</h3>
+                    <div class="value">{vocab_size * num_dimensions:,}</div>
+                </div>
+            </div>
+
+            <h2>Embedding Dimensions</h2>
+            <p>Click on any dimension to view it in full screen</p>
+
+            <div class="grid">"""
+
+    # Add dimension cards
+    for dim in range(num_dimensions):
+        html_content += f"""
+                <div class="dimension-card" onclick="openModal('dimension_{dim}.png')">
+                    <img src="dimension_{dim}.png" alt="Dimension {dim}">
+                    <div class="info">
+                        <h3>Dimension {dim}</h3>
+                    </div>
+                </div>"""
+
+    html_content += """
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal" onclick="closeModal()">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <img id="modal-img" src="" alt="">
+    </div>
+
+    <script>
+        function openModal(imageName) {
+            const modal = document.getElementById('modal');
+            const modalImg = document.getElementById('modal-img');
+            modalImg.src = imageName;
+            modal.style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        // Close modal on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>"""
+
+    # Write HTML file
+    html_path = os.path.join(output_dir, "index.html")
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+
+    print(f"Generated HTML index: {html_path}")
 
 
 if __name__ == "__main__":
