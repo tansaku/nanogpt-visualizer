@@ -15,7 +15,7 @@ from wordcloud import WordCloud
 import pickle
 from dotenv import load_dotenv
 import re
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 load_dotenv()
 
@@ -75,7 +75,7 @@ def tokenize_sentence(sentence, stoi):
 def create_sentence_flow_visualization(
     embeddings, words, token_ids, itos, output_dir, probe_sentence, model_dir
 ):
-    """Create visualization showing how sentence flows through embedding dimensions using single vertical layout."""
+    """Create visualization by directly composing wordmap images with PIL for zero whitespace."""
 
     n_embd = embeddings.shape[1]
     n_words = len(words)
@@ -95,16 +95,22 @@ def create_sentence_flow_visualization(
 
     # Load wordmap images
     wordmap_images = {}
+    wordmap_size = None
     for dim in range(n_embd):
         wordmap_path = os.path.join(wordmap_dir, f"dimension_{dim}.png")
         if os.path.exists(wordmap_path):
-            wordmap_images[dim] = np.array(Image.open(wordmap_path))
+            img = Image.open(wordmap_path)
+            wordmap_images[dim] = img
+            if wordmap_size is None:
+                wordmap_size = img.size  # (width, height)
         else:
             print(f"Warning: Missing wordmap for dimension {dim}")
 
     if not wordmap_images:
         print("Error: No wordmap images found!")
         return None
+
+    print(f"Wordmap size: {wordmap_size}")
 
     # Get embedding values for each word
     word_embeddings = []
@@ -119,149 +125,98 @@ def create_sentence_flow_visualization(
     min_val, max_val = all_values.min(), all_values.max()
     print(f"Embedding value range: {min_val:.3f} to {max_val:.3f}")
 
-    # Calculate grid dimensions (try to make it roughly square)
+    # Calculate grid dimensions
     grid_cols = int(np.ceil(np.sqrt(n_embd)))
     grid_rows = int(np.ceil(n_embd / grid_cols))
     print(f"Using {grid_rows}×{grid_cols} grid for {n_embd} dimensions")
 
-    # Create single figure with all words stacked vertically
-    wordmap_size = 2.5  # inches per wordmap (smaller for tighter layout)
-    fig_width = grid_cols * wordmap_size
-    fig_height = n_words * grid_rows * wordmap_size
+    # Calculate canvas size
+    wordmap_width, wordmap_height = wordmap_size
+    word_label_width = 100  # Space for word labels on the left
 
-    print(f"Creating combined visualization: {fig_width:.1f}×{fig_height:.1f} inches")
+    canvas_width = word_label_width + (grid_cols * wordmap_width)
+    canvas_height = n_words * grid_rows * wordmap_height
 
-    fig, axes = plt.subplots(
-        n_words * grid_rows, grid_cols, figsize=(fig_width, fig_height)
-    )
+    print(f"Creating canvas: {canvas_width}×{canvas_height} pixels")
 
-    # Handle single word case
-    if n_words == 1:
-        if grid_rows == 1:
-            axes = axes.reshape(1, -1)
-        else:
-            axes = axes.reshape(grid_rows, -1)
-    else:
-        axes = axes.reshape(n_words * grid_rows, grid_cols)
+    # Create canvas
+    canvas = Image.new("RGB", (canvas_width, canvas_height), "white")
 
-    # Create visualization for each word
+    # Create a drawing context for word labels
+    draw = ImageDraw.Draw(canvas)
+
+    # Try to load a font (fallback to default if not available)
+    try:
+        font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 20)
+    except:
+        font = ImageFont.load_default()
+
+    # Process each word
     for word_idx, (word, embedding) in enumerate(zip(words, word_embeddings)):
         print(f"Processing word '{word}' ({word_idx + 1}/{n_words})")
 
-        # Fill the grid for this word
+        # Calculate Y offset for this word's grid
+        word_y_offset = word_idx * grid_rows * wordmap_height
+
+        # Add word label
+        label_y = word_y_offset + (grid_rows * wordmap_height // 2)
+        draw.text((10, label_y), word, fill="black", font=font, anchor="lm")
+
+        # Process each dimension for this word
         for dim in range(n_embd):
+            if dim not in wordmap_images:
+                continue
+
+            # Calculate grid position
             row_in_grid = dim // grid_cols
             col_in_grid = dim % grid_cols
-            # Calculate absolute row position (word_idx * grid_rows + row_in_grid)
-            abs_row = word_idx * grid_rows + row_in_grid
-            ax = axes[abs_row, col_in_grid]
 
-            # Get the embedding value for this word in this dimension
+            # Calculate pixel position
+            x = word_label_width + (col_in_grid * wordmap_width)
+            y = word_y_offset + (row_in_grid * wordmap_height)
+
+            # Get embedding value and calculate opacity
             embed_value = embedding[dim]
 
-            # Normalize to [0, 1] for opacity (use percentile-based mapping for better contrast)
             if max_val != min_val:
-                # Use percentile-based mapping to emphasize relative differences
                 all_abs_values = np.abs(all_values)
-                # Get percentile for this absolute value
                 percentile = np.mean(all_abs_values <= abs(embed_value))
-                # Apply power function to emphasize differences
-                opacity = np.power(
-                    percentile, 0.5
-                )  # Square root to spread out lower values
-                # Ensure minimum visibility and cap maximum
+                opacity = np.power(percentile, 0.5)
                 opacity = max(0.2, min(0.95, opacity))
             else:
                 opacity = 0.5
 
-            # Show the wordmap for this dimension
-            if dim in wordmap_images:
-                wordmap_img = wordmap_images[dim]
+            # Get the wordmap image
+            wordmap_img = wordmap_images[dim].copy()
 
-                # Apply color tint based on positive/negative value
-                if embed_value >= 0:
-                    # Positive: keep original colors but with opacity
-                    ax.imshow(wordmap_img, alpha=opacity)
-                else:
-                    # Negative: apply red tint with opacity
-                    red_tinted = wordmap_img.copy()
-                    if len(red_tinted.shape) == 3:  # Color image
-                        red_tinted[:, :, 0] = np.minimum(
-                            255, red_tinted[:, :, 0] * 1.2
-                        )  # Enhance red
-                        red_tinted[:, :, 1] = red_tinted[:, :, 1] * 0.8  # Reduce green
-                        red_tinted[:, :, 2] = red_tinted[:, :, 2] * 0.8  # Reduce blue
-                    ax.imshow(red_tinted, alpha=opacity)
-            else:
-                # Fallback: show text
-                ax.text(
-                    0.5,
-                    0.5,
-                    f"D{dim}\n{embed_value:.2f}",
-                    fontsize=8,
-                    ha="center",
-                    va="center",
-                    alpha=opacity,
-                    color="black" if embed_value >= 0 else "red",
-                    transform=ax.transAxes,
+            # Apply opacity and color tinting
+            if embed_value < 0:
+                # Red tint for negative values
+                if wordmap_img.mode != "RGBA":
+                    wordmap_img = wordmap_img.convert("RGBA")
+
+                # Create red overlay
+                red_overlay = Image.new(
+                    "RGBA", wordmap_img.size, (255, 0, 0, int(50 * opacity))
                 )
+                wordmap_img = Image.alpha_composite(wordmap_img, red_overlay)
 
-            # Remove all ticks and spines for minimal appearance
-            ax.set_xticks([])
-            ax.set_yticks([])
-            for spine in ax.spines.values():
-                spine.set_visible(False)
+            # Apply overall opacity
+            if wordmap_img.mode != "RGBA":
+                wordmap_img = wordmap_img.convert("RGBA")
 
-            # Add dimension label only at the top row
-            if word_idx == 0 and row_in_grid == 0:
-                ax.set_title(f"D{dim}", fontsize=8, pad=2)
+            # Create opacity mask
+            alpha = wordmap_img.split()[-1]  # Get alpha channel
+            alpha = alpha.point(lambda p: int(p * opacity))  # Apply opacity
+            wordmap_img.putalpha(alpha)
 
-        # Hide unused subplots for this word
-        for dim in range(n_embd, grid_rows * grid_cols):
-            row_in_grid = dim // grid_cols
-            col_in_grid = dim % grid_cols
-            abs_row = word_idx * grid_rows + row_in_grid
-            if abs_row < axes.shape[0]:
-                axes[abs_row, col_in_grid].set_visible(False)
-
-        # Add word label on the left side of the first row for this word
-        if grid_cols > 0:
-            first_row_for_word = word_idx * grid_rows
-            axes[first_row_for_word, 0].text(
-                -0.15,
-                0.5,
-                word,
-                fontsize=14,
-                fontweight="bold",
-                rotation=0,
-                ha="right",
-                va="center",
-                transform=axes[first_row_for_word, 0].transAxes,
-            )
-
-    # Minimize spacing
-    plt.subplots_adjust(
-        left=0.08,  # Space for word labels
-        right=0.98,  # Minimal right margin
-        top=0.95,  # Space for dimension labels
-        bottom=0.02,  # Minimal bottom margin
-        hspace=0.05,  # Minimal vertical spacing
-        wspace=0.02,  # Minimal horizontal spacing
-    )
-
-    plt.suptitle(
-        f'Sentence Flow: "{probe_sentence}"\n'
-        f"Grid: {grid_rows}×{grid_cols} per word | Range: {min_val:.3f} to {max_val:.3f}",
-        fontsize=14,
-        y=0.98,
-    )
+            # Paste onto canvas
+            canvas.paste(wordmap_img, (x, y), wordmap_img)
 
     # Save the visualization
     output_path = os.path.join(output_dir, "sentence_flow.png")
-    plt.savefig(
-        output_path, dpi=200, bbox_inches="tight", facecolor="white", edgecolor="none"
-    )
-    plt.close()
+    canvas.save(output_path, "PNG")
+    plt.close()  # Close any matplotlib figures
 
     print(f"Saved sentence flow visualization: {output_path}")
     return output_path
