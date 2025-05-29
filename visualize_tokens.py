@@ -60,7 +60,7 @@ def create_vocabulary_mapping(vocab_size, nanogpt_path=None):
                 )
                 print(f"Mapped {len(vocab)} word tokens")
                 print("Sample token mappings:")
-                for i in range(min(10, len(vocab))):
+                for i in range(min(25, len(vocab))):
                     print(f"  {i} -> {vocab[i]}")
                 return vocab
         except Exception as e:
@@ -104,21 +104,33 @@ def analyze_training_data(training_data_path, vocab):
     print(f"📝 Training text length: {len(training_text)} characters")
     print(f"📝 First 200 chars: {repr(training_text[:200])}")
 
-    meta_path = os.environ.get("NANOGPT_META_PATH", "./meta_word.pkl")
-    if os.path.exists(meta_path):
-        try:
-            import pickle
+    # Clean up training text before tokenizing
+    training_text = training_text.replace("<|endoftext|>", " ")
 
-            meta = pickle.load(open(meta_path, "rb"))
-            if "tokenizer" in meta:
-                print("Using word tokenizer from meta_word.pkl")
-                tokenizer = meta["tokenizer"]
-                training_tokens = tokenizer.encode(training_text)
-                training_vocab_indices = set(training_tokens)
-                print(f"✅ Found {len(training_vocab_indices)} unique training tokens")
-                return training_vocab_indices
-        except Exception as e:
-            print(f"Failed to use word tokenizer: {e}")
+    # Tokenize using same logic as WordTokenizer
+    import re
+
+    def tokenize(text):
+        return re.findall(r"\w+|[^\w\s]", text, re.UNICODE)
+
+    training_tokens = set(tokenize(training_text))
+    training_tokens.add("<|endoftext|>")  # Add manually if needed
+
+    print(f"✅ Found {len(training_tokens)} unique training tokens")
+
+    tokens_in_vocab = set(vocab.values())
+    tokens_not_in_training = tokens_in_vocab - training_tokens
+
+    if tokens_not_in_training:
+        if len(tokens_not_in_training) > 0:
+            print("\n🚨 WARNING: Some vocab tokens do not appear in training data")
+            for i, token in enumerate(sorted(tokens_not_in_training)):
+                print(f"  {i}: {token}")
+                if i == 9:
+                    print(f"  ... and {len(tokens_not_in_training) - 10} more (if any)")
+                    break
+
+    return training_tokens
 
     try:
         enc = tiktoken.get_encoding("gpt2")
@@ -212,12 +224,6 @@ def main():
     training_tokens = None
     if training_data_path:
         training_tokens = analyze_training_data(training_data_path, vocab)
-        unused_tokens = set(vocab.keys()) - training_tokens
-        if unused_tokens:
-            print("\n🚨 WARNING: Some vocab tokens do not appear in training data")
-            for tid in sorted(list(unused_tokens)[:10]):
-                print(f"  {tid}: {vocab.get(tid, f'token_{tid}')}")
-            print(f"  ... and {len(unused_tokens) - 10} more (if any)")
 
     output_dir = "token_visualizations"
     os.makedirs(output_dir, exist_ok=True)
