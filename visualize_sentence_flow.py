@@ -141,11 +141,18 @@ def create_sentence_flow_visualization(
             # Get the embedding value for this word in this dimension
             embed_value = embedding[dim_idx]
 
-            # Normalize to [0, 1] for opacity (use absolute value for opacity)
+            # Normalize to [0, 1] for opacity (use percentile-based mapping for better contrast)
             if max_val != min_val:
-                opacity = abs(embed_value - min_val) / (max_val - min_val)
-                # Ensure minimum visibility
-                opacity = max(0.1, min(1.0, opacity))
+                # Use percentile-based mapping to emphasize relative differences
+                all_abs_values = np.abs(all_values)
+                # Get percentile for this absolute value
+                percentile = np.mean(all_abs_values <= abs(embed_value))
+                # Apply power function to emphasize differences
+                opacity = np.power(
+                    percentile, 0.5
+                )  # Square root to spread out lower values
+                # Ensure minimum visibility and cap maximum
+                opacity = max(0.15, min(0.95, opacity))
             else:
                 opacity = 0.5
 
@@ -311,6 +318,16 @@ def generate_html_page(
             overflow: auto;
             background: white;
         }}
+        .zoom-container.fullscreen {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1000;
+            max-height: none;
+            border-radius: 0;
+        }}
         .zoom-container img {{
             display: block;
             width: 100%;
@@ -329,6 +346,7 @@ def generate_html_page(
             border-radius: 5px;
             padding: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1001;
         }}
         .zoom-btn {{
             background: #667eea;
@@ -342,6 +360,12 @@ def generate_html_page(
         }}
         .zoom-btn:hover {{
             background: #5a67d8;
+        }}
+        .fullscreen-btn {{
+            background: #28a745;
+        }}
+        .fullscreen-btn:hover {{
+            background: #218838;
         }}
         .data-section {{
             margin: 30px 0;
@@ -487,7 +511,8 @@ def generate_html_page(
                 <ul>
                     <li><strong>Zoom:</strong> Use mouse wheel to zoom in/out on the visualization</li>
                     <li><strong>Pan:</strong> Click and drag to move around when zoomed in</li>
-                    <li><strong>Reset:</strong> Use the zoom controls in the top-right corner</li>
+                    <li><strong>Fullscreen:</strong> Click the fullscreen button for maximum viewing area</li>
+                    <li><strong>Reset:</strong> Use the zoom controls to reset view</li>
                     <li><strong>Data Table:</strong> Scroll down to see exact numerical values</li>
                 </ul>
             </div>
@@ -517,6 +542,7 @@ def generate_html_page(
                         <button class="zoom-btn" onclick="zoomIn()">+</button>
                         <button class="zoom-btn" onclick="zoomOut()">−</button>
                         <button class="zoom-btn" onclick="resetZoom()">Reset</button>
+                        <button class="zoom-btn fullscreen-btn" onclick="toggleFullscreen()" id="fullscreenBtn">⛶ Fullscreen</button>
                     </div>
                     <img id="mainImage" src="sentence_flow.png" alt="Sentence Flow Visualization">
                 </div>
@@ -541,16 +567,18 @@ def generate_html_page(
         let currentZoom = 1;
         let isDragging = false;
         let startX, startY, scrollLeft, scrollTop;
+        let isFullscreen = false;
 
         const container = document.getElementById('zoomContainer');
         const image = document.getElementById('mainImage');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
 
         // Zoom functionality
         container.addEventListener('wheel', function(e) {{
             e.preventDefault();
             const delta = e.deltaY > 0 ? 0.9 : 1.1;
             currentZoom *= delta;
-            currentZoom = Math.max(0.5, Math.min(currentZoom, 5));
+            currentZoom = Math.max(0.5, Math.min(currentZoom, 10));
             image.style.transform = `scale(${{currentZoom}})`;
         }});
 
@@ -588,7 +616,7 @@ def generate_html_page(
         // Zoom control buttons
         function zoomIn() {{
             currentZoom *= 1.2;
-            currentZoom = Math.min(currentZoom, 5);
+            currentZoom = Math.min(currentZoom, 10);
             image.style.transform = `scale(${{currentZoom}})`;
         }}
 
@@ -604,6 +632,30 @@ def generate_html_page(
             container.scrollLeft = 0;
             container.scrollTop = 0;
         }}
+
+        // Fullscreen functionality
+        function toggleFullscreen() {{
+            if (!isFullscreen) {{
+                container.classList.add('fullscreen');
+                fullscreenBtn.textContent = '✕ Exit Fullscreen';
+                isFullscreen = true;
+                // Prevent body scroll when in fullscreen
+                document.body.style.overflow = 'hidden';
+            }} else {{
+                container.classList.remove('fullscreen');
+                fullscreenBtn.textContent = '⛶ Fullscreen';
+                isFullscreen = false;
+                // Restore body scroll
+                document.body.style.overflow = 'auto';
+            }}
+        }}
+
+        // Escape key to exit fullscreen
+        document.addEventListener('keydown', function(e) {{
+            if (e.key === 'Escape' && isFullscreen) {{
+                toggleFullscreen();
+            }}
+        }});
     </script>
 </body>
 </html>"""
