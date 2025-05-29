@@ -75,7 +75,7 @@ def tokenize_sentence(sentence, stoi):
 def create_sentence_flow_visualization(
     embeddings, words, token_ids, itos, output_dir, probe_sentence, model_dir
 ):
-    """Create visualization showing how sentence flows through embedding dimensions using grid layout."""
+    """Create visualization showing how sentence flows through embedding dimensions using single vertical layout."""
 
     n_embd = embeddings.shape[1]
     n_words = len(words)
@@ -124,32 +124,37 @@ def create_sentence_flow_visualization(
     grid_rows = int(np.ceil(n_embd / grid_cols))
     print(f"Using {grid_rows}×{grid_cols} grid for {n_embd} dimensions")
 
-    # Create visualization for each word separately
-    word_images = []
+    # Create single figure with all words stacked vertically
+    wordmap_size = 2.5  # inches per wordmap (smaller for tighter layout)
+    fig_width = grid_cols * wordmap_size
+    fig_height = n_words * grid_rows * wordmap_size
 
-    for word_idx, (word, embedding) in enumerate(zip(words, word_embeddings)):
-        print(f"Creating grid for word '{word}' ({word_idx + 1}/{n_words})")
+    print(f"Creating combined visualization: {fig_width:.1f}×{fig_height:.1f} inches")
 
-        # Create figure for this word with larger wordmaps
-        wordmap_size = 4  # inches per wordmap
-        fig_width = grid_cols * wordmap_size
-        fig_height = grid_rows * wordmap_size
+    fig, axes = plt.subplots(
+        n_words * grid_rows, grid_cols, figsize=(fig_width, fig_height)
+    )
 
-        fig, axes = plt.subplots(grid_rows, grid_cols, figsize=(fig_width, fig_height))
-
-        # Handle single row/column cases
+    # Handle single word case
+    if n_words == 1:
         if grid_rows == 1:
             axes = axes.reshape(1, -1)
-        elif grid_cols == 1:
-            axes = axes.reshape(-1, 1)
-        elif grid_rows == 1 and grid_cols == 1:
-            axes = np.array([[axes]])
+        else:
+            axes = axes.reshape(grid_rows, -1)
+    else:
+        axes = axes.reshape(n_words * grid_rows, grid_cols)
 
-        # Fill the grid
+    # Create visualization for each word
+    for word_idx, (word, embedding) in enumerate(zip(words, word_embeddings)):
+        print(f"Processing word '{word}' ({word_idx + 1}/{n_words})")
+
+        # Fill the grid for this word
         for dim in range(n_embd):
-            row = dim // grid_cols
-            col = dim % grid_cols
-            ax = axes[row, col]
+            row_in_grid = dim // grid_cols
+            col_in_grid = dim % grid_cols
+            # Calculate absolute row position (word_idx * grid_rows + row_in_grid)
+            abs_row = word_idx * grid_rows + row_in_grid
+            ax = axes[abs_row, col_in_grid]
 
             # Get the embedding value for this word in this dimension
             embed_value = embedding[dim]
@@ -165,7 +170,7 @@ def create_sentence_flow_visualization(
                     percentile, 0.5
                 )  # Square root to spread out lower values
                 # Ensure minimum visibility and cap maximum
-                opacity = max(0.15, min(0.95, opacity))
+                opacity = max(0.2, min(0.95, opacity))
             else:
                 opacity = 0.5
 
@@ -192,8 +197,8 @@ def create_sentence_flow_visualization(
                 ax.text(
                     0.5,
                     0.5,
-                    f"Dim {dim}\n{embed_value:.3f}",
-                    fontsize=12,
+                    f"D{dim}\n{embed_value:.2f}",
+                    fontsize=8,
                     ha="center",
                     va="center",
                     alpha=opacity,
@@ -201,60 +206,75 @@ def create_sentence_flow_visualization(
                     transform=ax.transAxes,
                 )
 
+            # Remove all ticks and spines for minimal appearance
             ax.set_xticks([])
             ax.set_yticks([])
-
-            # Add dimension label and value
-            ax.set_title(f"Dim {dim}\n{embed_value:.3f}", fontsize=12, pad=10)
-
-            # Add border with color indicating positive/negative
-            border_color = "black" if embed_value >= 0 else "red"
-            border_width = 3 if abs(embed_value) > np.std(all_abs_values) else 1
             for spine in ax.spines.values():
-                spine.set_edgecolor(border_color)
-                spine.set_linewidth(border_width)
+                spine.set_visible(False)
 
-        # Hide unused subplots
+            # Add dimension label only at the top row
+            if word_idx == 0 and row_in_grid == 0:
+                ax.set_title(f"D{dim}", fontsize=8, pad=2)
+
+        # Hide unused subplots for this word
         for dim in range(n_embd, grid_rows * grid_cols):
-            row = dim // grid_cols
-            col = dim % grid_cols
-            axes[row, col].set_visible(False)
+            row_in_grid = dim // grid_cols
+            col_in_grid = dim % grid_cols
+            abs_row = word_idx * grid_rows + row_in_grid
+            if abs_row < axes.shape[0]:
+                axes[abs_row, col_in_grid].set_visible(False)
 
-        plt.suptitle(
-            f'Word: "{word}" - Embedding Activations\n'
-            f"Grid: {grid_rows}×{grid_cols} | Values: {embedding.min():.3f} to {embedding.max():.3f}",
-            fontsize=18,
-            y=0.98,
-        )
-        plt.tight_layout()
+        # Add word label on the left side of the first row for this word
+        if grid_cols > 0:
+            first_row_for_word = word_idx * grid_rows
+            axes[first_row_for_word, 0].text(
+                -0.15,
+                0.5,
+                word,
+                fontsize=14,
+                fontweight="bold",
+                rotation=0,
+                ha="right",
+                va="center",
+                transform=axes[first_row_for_word, 0].transAxes,
+            )
 
-        # Save individual word visualization
-        word_output_path = os.path.join(output_dir, f"word_{word_idx}_{word}.png")
-        plt.savefig(word_output_path, dpi=200, bbox_inches="tight")
-        plt.close()
+    # Minimize spacing
+    plt.subplots_adjust(
+        left=0.08,  # Space for word labels
+        right=0.98,  # Minimal right margin
+        top=0.95,  # Space for dimension labels
+        bottom=0.02,  # Minimal bottom margin
+        hspace=0.05,  # Minimal vertical spacing
+        wspace=0.02,  # Minimal horizontal spacing
+    )
 
-        word_images.append(
-            {
-                "word": word,
-                "filename": f"word_{word_idx}_{word}.png",
-                "path": word_output_path,
-            }
-        )
+    plt.suptitle(
+        f'Sentence Flow: "{probe_sentence}"\n'
+        f"Grid: {grid_rows}×{grid_cols} per word | Range: {min_val:.3f} to {max_val:.3f}",
+        fontsize=14,
+        y=0.98,
+    )
 
-    print(f"Saved {len(word_images)} word visualizations")
-    return word_images
+    # Save the visualization
+    output_path = os.path.join(output_dir, "sentence_flow.png")
+    plt.savefig(
+        output_path, dpi=200, bbox_inches="tight", facecolor="white", edgecolor="none"
+    )
+    plt.close()
+
+    print(f"Saved sentence flow visualization: {output_path}")
+    return output_path
 
 
 def generate_html_page(
-    output_dir,
-    model_name,
-    probe_sentence,
-    words,
-    n_embd,
-    word_embeddings=None,
-    word_images=None,
+    output_dir, model_name, probe_sentence, words, n_embd, word_embeddings=None
 ):
-    """Generate HTML page for the sentence flow visualization."""
+    """Generate simple HTML page for the sentence flow visualization."""
+
+    # Calculate grid dimensions for display
+    grid_cols = int(np.ceil(np.sqrt(n_embd)))
+    grid_rows = int(np.ceil(n_embd / grid_cols))
 
     # Create data table if we have embeddings
     data_table_html = ""
@@ -269,7 +289,7 @@ def generate_html_page(
                                 <th>Word</th>"""
 
         for dim in range(n_embd):
-            data_table_html += f"<th>Dim {dim}</th>"
+            data_table_html += f"<th>D{dim}</th>"
 
         data_table_html += """
                             </tr>
@@ -290,46 +310,6 @@ def generate_html_page(
                 </div>
             </div>"""
 
-    # Create word navigation and visualizations
-    word_nav_html = ""
-    word_visualizations_html = ""
-
-    if word_images:
-        # Navigation tabs
-        word_nav_html = """
-            <div class="word-navigation">
-                <h3>Select Word to Visualize:</h3>
-                <div class="word-tabs">"""
-
-        for i, word_info in enumerate(word_images):
-            active_class = "active" if i == 0 else ""
-            word_nav_html += f"""
-                <button class="word-tab {active_class}" onclick="showWord({i})">{word_info['word']}</button>"""
-
-        word_nav_html += """
-                </div>
-            </div>"""
-
-        # Word visualizations
-        for i, word_info in enumerate(word_images):
-            display_style = "block" if i == 0 else "none"
-            word_visualizations_html += f"""
-            <div class="word-visualization" id="word_{i}" style="display: {display_style};">
-                <div class="zoom-container" id="zoomContainer_{i}">
-                    <div class="zoom-controls">
-                        <button class="zoom-btn" onclick="zoomIn({i})">+</button>
-                        <button class="zoom-btn" onclick="zoomOut({i})">−</button>
-                        <button class="zoom-btn" onclick="resetZoom({i})">Reset</button>
-                        <button class="zoom-btn fullscreen-btn" onclick="toggleFullscreen({i})" id="fullscreenBtn_{i}">⛶ Fullscreen</button>
-                    </div>
-                    <img id="mainImage_{i}" src="{word_info['filename']}" alt="Word {word_info['word']} Visualization" style="width: 100%; height: auto;">
-                </div>
-            </div>"""
-
-    # Calculate grid dimensions for display
-    grid_cols = int(np.ceil(np.sqrt(n_embd)))
-    grid_rows = int(np.ceil(n_embd / grid_cols))
-
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -342,9 +322,10 @@ def generate_html_page(
             margin: 0;
             padding: 20px;
             background: #f5f5f5;
+            line-height: 1.6;
         }}
         .container {{
-            max-width: 1800px;
+            max-width: 1200px;
             margin: 0 auto;
             background: white;
             border-radius: 8px;
@@ -368,98 +349,44 @@ def generate_html_page(
         .content {{
             padding: 30px;
         }}
-        .word-navigation {{
-            margin: 20px 0;
+        .visualization {{
             text-align: center;
-        }}
-        .word-tabs {{
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin: 15px 0;
-        }}
-        .word-tab {{
-            background: #f8f9fa;
-            border: 2px solid #dee2e6;
-            color: #495057;
-            padding: 12px 24px;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            transition: all 0.3s;
-        }}
-        .word-tab:hover {{
-            background: #e9ecef;
-            border-color: #adb5bd;
-        }}
-        .word-tab.active {{
-            background: #667eea;
-            border-color: #667eea;
-            color: white;
-        }}
-        .word-visualization {{
             margin: 30px 0;
         }}
-        .zoom-container {{
-            border: 2px solid #ddd;
+        .visualization img {{
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
             border-radius: 8px;
-            overflow: auto;
-            position: relative;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             background: white;
-            max-height: 85vh;
         }}
-        .zoom-container.fullscreen {{
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 1000;
-            max-height: none;
-            border-radius: 0;
+        .stats {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
         }}
-        .zoom-container img {{
-            display: block;
-            cursor: grab;
-            transition: transform 0.1s;
-            transform-origin: center center;
-        }}
-        .zoom-container img:active {{
-            cursor: grabbing;
-        }}
-        .zoom-controls {{
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(255,255,255,0.95);
+        .stat-card {{
+            background: #f8f9fa;
+            padding: 20px;
             border-radius: 8px;
-            padding: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            z-index: 1001;
-            display: flex;
-            gap: 8px;
+            text-align: center;
         }}
-        .zoom-btn {{
-            background: #667eea;
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
+        .stat-card h3 {{
+            margin: 0 0 10px 0;
+            color: #495057;
+        }}
+        .stat-card .value {{
+            font-size: 1.5em;
             font-weight: bold;
-            transition: background 0.2s;
+            color: #667eea;
         }}
-        .zoom-btn:hover {{
-            background: #5a67d8;
-        }}
-        .fullscreen-btn {{
-            background: #28a745;
-        }}
-        .fullscreen-btn:hover {{
-            background: #218838;
+        .info {{
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
         }}
         .data-section {{
             margin: 30px 0;
@@ -508,39 +435,22 @@ def generate_html_page(
             background: rgba(220, 0, 0, 0.05);
             color: #dc3545;
         }}
-        .info {{
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
+        .legend {{
+            display: flex;
+            justify-content: center;
+            gap: 30px;
             margin: 20px 0;
+            flex-wrap: wrap;
         }}
-        .stats {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin: 20px 0;
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }}
-        .stat-card {{
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            text-align: center;
-        }}
-        .stat-card h3 {{
-            margin: 0 0 10px 0;
-            color: #495057;
-        }}
-        .stat-card .value {{
-            font-size: 1.5em;
-            font-weight: bold;
-            color: #667eea;
-        }}
-        .instructions {{
-            background: #e3f2fd;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-            border-left: 4px solid #2196f3;
+        .legend-color {{
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
         }}
     </style>
 </head>
@@ -550,7 +460,7 @@ def generate_html_page(
             <h1>Sentence Flow Visualization</h1>
             <p><strong>Model:</strong> {model_name}</p>
             <p><strong>Probe Sentence:</strong> "{probe_sentence}"</p>
-            <p><strong>Layout:</strong> {grid_rows}×{grid_cols} grid for {n_embd} dimensions</p>
+            <p><strong>Layout:</strong> {grid_rows}×{grid_cols} grid per word, {len(words)} words vertically stacked</p>
         </div>
 
         <div class="content">
@@ -564,168 +474,58 @@ def generate_html_page(
                     <div class="value">{n_embd}</div>
                 </div>
                 <div class="stat-card">
-                    <h3>Grid Layout</h3>
+                    <h3>Grid per Word</h3>
                     <div class="value">{grid_rows}×{grid_cols}</div>
                 </div>
             </div>
 
-            <div class="instructions">
-                <strong>🔍 How to Use:</strong>
+            <div class="info">
+                <h3>How to Read This Visualization</h3>
+                <p>This visualization shows how each word in the probe sentence activates the learned embedding dimensions:</p>
                 <ul>
-                    <li><strong>Word Tabs:</strong> Click on word tabs above to switch between different word visualizations</li>
-                    <li><strong>Zoom:</strong> Use mouse wheel or +/- buttons to zoom in/out</li>
-                    <li><strong>Pan:</strong> Click and drag to move around when zoomed in</li>
-                    <li><strong>Fullscreen:</strong> Click fullscreen button for maximum viewing area</li>
-                    <li><strong>Grid Layout:</strong> Each word shows a {grid_rows}×{grid_cols} grid of larger wordmaps</li>
-                    <li><strong>Opacity:</strong> Wordmap opacity indicates activation strength for that dimension</li>
-                    <li><strong>Borders:</strong> Thick borders indicate high activation, thin borders indicate low activation</li>
+                    <li><strong>Vertical Layout:</strong> Each word gets its own {grid_rows}×{grid_cols} grid, stacked vertically</li>
+                    <li><strong>Word Labels:</strong> On the left side of each grid block</li>
+                    <li><strong>Dimension Labels:</strong> At the top (D0, D1, D2, etc.)</li>
+                    <li><strong>Wordmaps:</strong> Each cell shows the learned word cloud for that dimension</li>
+                    <li><strong>Opacity:</strong> How strong the word activates that dimension</li>
+                    <li><strong>Colors:</strong> Black tint for positive activation, red tint for negative activation</li>
                 </ul>
+                <p><strong>🔍 Usage:</strong> Use your browser's native zoom (Cmd/Ctrl + mouse wheel) to examine details</p>
             </div>
 
-            {word_nav_html}
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(0,0,0,0.8);"></div>
+                    <span>Strong Positive Activation</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(220,0,0,0.8);"></div>
+                    <span>Strong Negative Activation</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(0,0,0,0.2);"></div>
+                    <span>Weak Activation</span>
+                </div>
+            </div>
 
-            {word_visualizations_html}
+            <div class="visualization">
+                <img src="sentence_flow.png" alt="Sentence Flow Visualization">
+            </div>
 
             {data_table_html}
 
             <div class="info">
-                <h3>Understanding the Grid Layout</h3>
-                <p>Each word now has its own {grid_rows}×{grid_cols} grid showing all {n_embd} embedding dimensions:</p>
+                <h3>Interpretation Tips</h3>
+                <p>Look for patterns in the visualization:</p>
                 <ul>
-                    <li><strong>Each cell</strong> shows the wordmap for one dimension</li>
-                    <li><strong>Opacity</strong> indicates how strongly that word activates that dimension</li>
-                    <li><strong>Border thickness</strong> shows activation strength relative to other dimensions</li>
-                    <li><strong>Colors:</strong> Black borders = positive activation, red borders = negative activation</li>
-                    <li><strong>Grid layout</strong> makes it easier to see patterns and compare dimensions</li>
+                    <li><strong>Word Similarities:</strong> Do similar words (like "knock" "knock") have similar activation patterns?</li>
+                    <li><strong>Dimension Specialization:</strong> Do certain dimensions consistently activate for specific types of words?</li>
+                    <li><strong>Sentence Structure:</strong> How do different parts of the sentence (greeting vs. names) activate differently?</li>
+                    <li><strong>Activation Strength:</strong> Which dimensions are most important for each word?</li>
                 </ul>
             </div>
         </div>
     </div>
-
-    <script>
-        let currentZoom = Array({len(words)}).fill(1);
-        let isFullscreen = Array({len(words)}).fill(false);
-        let currentWord = 0;
-
-        function showWord(wordIndex) {{
-            // Hide all word visualizations
-            for (let i = 0; i < {len(words)}; i++) {{
-                document.getElementById(`word_${{i}}`).style.display = 'none';
-                document.querySelectorAll('.word-tab')[i].classList.remove('active');
-            }}
-
-            // Show selected word
-            document.getElementById(`word_${{wordIndex}}`).style.display = 'block';
-            document.querySelectorAll('.word-tab')[wordIndex].classList.add('active');
-            currentWord = wordIndex;
-        }}
-
-        // Zoom functionality
-        function setupZoomForWord(wordIndex) {{
-            const container = document.getElementById(`zoomContainer_${{wordIndex}}`);
-            const image = document.getElementById(`mainImage_${{wordIndex}}`);
-
-            let isDragging = false;
-            let startX, startY, startScrollLeft, startScrollTop;
-
-            container.addEventListener('wheel', function(e) {{
-                e.preventDefault();
-                const rect = container.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-
-                const delta = e.deltaY > 0 ? 0.9 : 1.1;
-                currentZoom[wordIndex] *= delta;
-                currentZoom[wordIndex] = Math.max(0.3, Math.min(currentZoom[wordIndex], 15));
-
-                // Calculate new scroll position to zoom toward mouse
-                const scrollX = (container.scrollLeft + x) * delta - x;
-                const scrollY = (container.scrollTop + y) * delta - y;
-
-                image.style.transform = `scale(${{currentZoom[wordIndex]}})`;
-
-                // Adjust scroll position after zoom
-                setTimeout(() => {{
-                    container.scrollLeft = scrollX;
-                    container.scrollTop = scrollY;
-                }}, 10);
-            }});
-
-            // Pan functionality
-            container.addEventListener('mousedown', function(e) {{
-                isDragging = true;
-                startX = e.clientX;
-                startY = e.clientY;
-                startScrollLeft = container.scrollLeft;
-                startScrollTop = container.scrollTop;
-                container.style.cursor = 'grabbing';
-            }});
-
-            document.addEventListener('mousemove', function(e) {{
-                if (!isDragging) return;
-                e.preventDefault();
-                const deltaX = e.clientX - startX;
-                const deltaY = e.clientY - startY;
-                container.scrollLeft = startScrollLeft - deltaX;
-                container.scrollTop = startScrollTop - deltaY;
-            }});
-
-            document.addEventListener('mouseup', function() {{
-                isDragging = false;
-                container.style.cursor = 'grab';
-            }});
-        }}
-
-        // Initialize zoom for all words
-        for (let i = 0; i < {len(words)}; i++) {{
-            setupZoomForWord(i);
-        }}
-
-        function zoomIn(wordIndex) {{
-            currentZoom[wordIndex] *= 1.3;
-            currentZoom[wordIndex] = Math.min(currentZoom[wordIndex], 15);
-            document.getElementById(`mainImage_${{wordIndex}}`).style.transform = `scale(${{currentZoom[wordIndex]}})`;
-        }}
-
-        function zoomOut(wordIndex) {{
-            currentZoom[wordIndex] *= 0.7;
-            currentZoom[wordIndex] = Math.max(currentZoom[wordIndex], 0.3);
-            document.getElementById(`mainImage_${{wordIndex}}`).style.transform = `scale(${{currentZoom[wordIndex]}})`;
-        }}
-
-        function resetZoom(wordIndex) {{
-            currentZoom[wordIndex] = 1;
-            const container = document.getElementById(`zoomContainer_${{wordIndex}}`);
-            const image = document.getElementById(`mainImage_${{wordIndex}}`);
-            image.style.transform = 'scale(1)';
-            container.scrollLeft = 0;
-            container.scrollTop = 0;
-        }}
-
-        function toggleFullscreen(wordIndex) {{
-            const container = document.getElementById(`zoomContainer_${{wordIndex}}`);
-            const btn = document.getElementById(`fullscreenBtn_${{wordIndex}}`);
-
-            if (!isFullscreen[wordIndex]) {{
-                container.classList.add('fullscreen');
-                btn.textContent = '✕ Exit';
-                isFullscreen[wordIndex] = true;
-                document.body.style.overflow = 'hidden';
-            }} else {{
-                container.classList.remove('fullscreen');
-                btn.textContent = '⛶ Fullscreen';
-                isFullscreen[wordIndex] = false;
-                document.body.style.overflow = 'auto';
-            }}
-        }}
-
-        // Escape key to exit fullscreen
-        document.addEventListener('keydown', function(e) {{
-            if (e.key === 'Escape' && isFullscreen[currentWord]) {{
-                toggleFullscreen(currentWord);
-            }}
-        }});
-    </script>
 </body>
 </html>"""
 
@@ -777,23 +577,23 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     # Generate visualization
-    word_images = create_sentence_flow_visualization(
+    visualization_path = create_sentence_flow_visualization(
         embeddings, words, token_ids, itos, output_dir, probe_sentence, model_dir
     )
 
-    # Generate HTML page
-    generate_html_page(
-        output_dir,
-        model_dir,
-        probe_sentence,
-        words,
-        embeddings.shape[1],
-        word_embeddings,
-        word_images,
-    )
+    if visualization_path:
+        # Generate HTML page
+        generate_html_page(
+            output_dir,
+            model_dir,
+            probe_sentence,
+            words,
+            embeddings.shape[1],
+            word_embeddings,
+        )
 
-    print(f"\nDone! Sentence flow visualization saved to: {output_dir}/")
-    print(f"View at: {output_dir}/index.html")
+        print(f"\nDone! Sentence flow visualization saved to: {output_dir}/")
+        print(f"View at: {output_dir}/index.html")
 
 
 if __name__ == "__main__":
