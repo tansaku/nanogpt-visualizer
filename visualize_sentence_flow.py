@@ -132,10 +132,12 @@ def create_sentence_flow_visualization(
 
     # Calculate canvas size
     wordmap_width, wordmap_height = wordmap_size
-    word_label_width = 100  # Space for word labels on the left
+    word_label_width = 120  # Increased space for word labels
+    word_block_height = grid_rows * wordmap_height
+    word_separator_height = 20  # Space between word blocks
 
     canvas_width = word_label_width + (grid_cols * wordmap_width)
-    canvas_height = n_words * grid_rows * wordmap_height
+    canvas_height = n_words * word_block_height + (n_words - 1) * word_separator_height
 
     print(f"Creating canvas: {canvas_width}×{canvas_height} pixels")
 
@@ -147,20 +149,59 @@ def create_sentence_flow_visualization(
 
     # Try to load a font (fallback to default if not available)
     try:
-        font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 20)
+        font_large = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 24)
+        font_small = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 12)
     except:
-        font = ImageFont.load_default()
+        font_large = ImageFont.load_default()
+        font_small = ImageFont.load_default()
 
     # Process each word
     for word_idx, (word, embedding) in enumerate(zip(words, word_embeddings)):
         print(f"Processing word '{word}' ({word_idx + 1}/{n_words})")
 
-        # Calculate Y offset for this word's grid
-        word_y_offset = word_idx * grid_rows * wordmap_height
+        # Calculate Y offset for this word's grid (including separators)
+        word_y_offset = word_idx * (word_block_height + word_separator_height)
 
-        # Add word label
-        label_y = word_y_offset + (grid_rows * wordmap_height // 2)
-        draw.text((10, label_y), word, fill="black", font=font, anchor="lm")
+        # Draw word block background (light gray)
+        word_block_rect = [
+            0,
+            word_y_offset,
+            canvas_width,
+            word_y_offset + word_block_height,
+        ]
+        draw.rectangle(
+            word_block_rect, fill=(250, 250, 250), outline=(200, 200, 200), width=2
+        )
+
+        # Add prominent word label
+        label_x = 10
+        label_y = word_y_offset + (word_block_height // 2)
+
+        # Draw word label background
+        label_bbox = draw.textbbox(
+            (label_x, label_y), word, font=font_large, anchor="lm"
+        )
+        label_bg_rect = [
+            label_bbox[0] - 5,
+            label_bbox[1] - 5,
+            label_bbox[2] + 5,
+            label_bbox[3] + 5,
+        ]
+        draw.rectangle(
+            label_bg_rect, fill=(255, 255, 255), outline=(100, 100, 100), width=1
+        )
+
+        # Draw word label
+        draw.text((label_x, label_y), word, fill="black", font=font_large, anchor="lm")
+
+        # Add word index
+        draw.text(
+            (label_x, label_y + 30),
+            f"Word {word_idx + 1}",
+            fill=(100, 100, 100),
+            font=font_small,
+            anchor="lm",
+        )
 
         # Process each dimension for this word
         for dim in range(n_embd):
@@ -212,6 +253,31 @@ def create_sentence_flow_visualization(
 
             # Paste onto canvas
             canvas.paste(wordmap_img, (x, y), wordmap_img)
+
+            # Add thin border around each wordmap for clarity
+            wordmap_rect = [x, y, x + wordmap_width, y + wordmap_height]
+            draw.rectangle(wordmap_rect, outline=(220, 220, 220), width=1)
+
+        # Add dimension labels at the top of the first word's grid
+        if word_idx == 0:
+            for dim in range(n_embd):
+                row_in_grid = dim // grid_cols
+                col_in_grid = dim % grid_cols
+
+                if row_in_grid == 0:  # Only for top row
+                    x = (
+                        word_label_width
+                        + (col_in_grid * wordmap_width)
+                        + (wordmap_width // 2)
+                    )
+                    y = word_y_offset - 10
+                    draw.text(
+                        (x, y),
+                        f"D{dim}",
+                        fill=(100, 100, 100),
+                        font=font_small,
+                        anchor="mb",
+                    )
 
     # Save the visualization
     output_path = os.path.join(output_dir, "sentence_flow.png")
