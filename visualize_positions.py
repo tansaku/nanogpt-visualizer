@@ -157,17 +157,14 @@ def visualize_positional_embeddings(pos_embeddings, block_size, model_args, outp
         plt.imshow(wordcloud, interpolation="bilinear")
         plt.axis("off")
 
-        # Add title with statistics
-        value_range = f"{dimension_values.min():.3f} to {dimension_values.max():.3f}"
+        # Add title with consistent format - match token embedding style
         plt.title(
-            f"Positional Embedding Dimension {dim}\nValue Range: {value_range}",
-            fontsize=14,
-            pad=20,
+            f"Position Dimension {dim} - Black: Positive, Red: Negative", fontsize=14
         )
 
-        # Save the plot
+        # Save the plot - match token embedding save parameters exactly
         output_path = os.path.join(output_dir, f"position_dimension_{dim}.png")
-        plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor="white")
+        plt.savefig(output_path, dpi=200, bbox_inches="tight")
         plt.close()
 
         # Also save raw data for debugging
