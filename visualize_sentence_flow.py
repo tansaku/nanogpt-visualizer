@@ -324,23 +324,24 @@ def create_sentence_flow_visualization(
                 (small_wordmap_width, small_wordmap_height), Image.Resampling.LANCZOS
             )
 
-            # Apply opacity and color tinting
-            if embed_value < 0:
-                # Red tint for negative values
-                if wordmap_img.mode != "RGBA":
-                    wordmap_img = wordmap_img.convert("RGBA")
-
-                # Create red overlay
-                red_overlay = Image.new(
-                    "RGBA", wordmap_img.size, (255, 0, 0, int(50 * opacity))
-                )
-                wordmap_img = Image.alpha_composite(wordmap_img, red_overlay)
-
-            # Apply overall opacity
+            # Apply opacity and color effects based on positive/negative values
             if wordmap_img.mode != "RGBA":
                 wordmap_img = wordmap_img.convert("RGBA")
 
-            # Create opacity mask
+            if embed_value < 0:
+                # Negative values: invert colors to show suppression/inhibition
+                # Convert to numpy for easier manipulation
+                img_array = np.array(wordmap_img)
+
+                # Invert RGB channels (keep alpha unchanged)
+                img_array[:, :, 0] = 255 - img_array[:, :, 0]  # Invert red
+                img_array[:, :, 1] = 255 - img_array[:, :, 1]  # Invert green
+                img_array[:, :, 2] = 255 - img_array[:, :, 2]  # Invert blue
+
+                # Convert back to PIL image
+                wordmap_img = Image.fromarray(img_array, "RGBA")
+
+            # Apply opacity based on absolute value (same for positive and negative)
             alpha = wordmap_img.split()[-1]  # Get alpha channel
             alpha = alpha.point(lambda p: int(p * opacity))  # Apply opacity
             wordmap_img.putalpha(alpha)
