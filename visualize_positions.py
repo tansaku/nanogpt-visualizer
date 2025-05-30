@@ -114,7 +114,7 @@ def create_position_wordcloud(dimension_values, dimension_idx, block_size):
     # Generate word cloud
     wordcloud = WordCloud(
         width=800,
-        height=600,
+        height=400,  # Match token embedding dimensions
         background_color="white",
         max_words=min(50, len(significant_positions)),
         color_func=color_func,
@@ -153,7 +153,7 @@ def visualize_positional_embeddings(pos_embeddings, block_size, model_args, outp
         all_dimension_data[dim] = dimension_data
 
         # Create plot
-        plt.figure(figsize=(12, 8))
+        plt.figure(figsize=(12, 6))  # Match token embedding figure size
         plt.imshow(wordcloud, interpolation="bilinear")
         plt.axis("off")
 

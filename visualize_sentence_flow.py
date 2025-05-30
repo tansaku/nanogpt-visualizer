@@ -127,7 +127,7 @@ def create_sentence_flow_visualization(
     model_dir,
     representation_type="embeddings",
 ):
-    """Create visualization by directly composing wordmap images with PIL for zero whitespace."""
+    """Create visualization by directly composing wordmap images with PIL - clean grids only."""
 
     n_embd = representation_handler.n_embd
     n_words = len(words)
@@ -190,30 +190,27 @@ def create_sentence_flow_visualization(
     grid_rows = int(np.ceil(n_embd / grid_cols))
     print(f"Using {grid_rows}×{grid_cols} grid for {n_embd} dimensions")
 
-    # Calculate canvas size - EXTREME changes for visibility
+    # Calculate canvas size - much simpler without word labels
     wordmap_width, wordmap_height = wordmap_size
 
-    # Shrink wordmaps dramatically for overview
-    small_wordmap_size = 40  # Much smaller than original
+    # Make wordmaps smaller for overview
+    small_wordmap_size = 60  # Slightly larger than before since no labels taking space
     scale_factor = small_wordmap_size / min(wordmap_width, wordmap_height)
     small_wordmap_width = int(wordmap_width * scale_factor)
     small_wordmap_height = int(wordmap_height * scale_factor)
 
-    word_label_width = 200  # Much larger space for word labels
     word_block_height = grid_rows * small_wordmap_height
-    word_separator_height = 60  # Much larger space between word blocks
-    border_thickness = 4  # Thick black borders
+    word_separator_height = 20  # Small gap between word blocks
+    border_thickness = 2
 
-    canvas_width = (
-        word_label_width + (grid_cols * small_wordmap_width) + border_thickness * 2
-    )
+    canvas_width = grid_cols * small_wordmap_width + border_thickness * 2
     canvas_height = (
         n_words * word_block_height
         + (n_words - 1) * word_separator_height
         + border_thickness * 2
     )
 
-    print(f"Creating canvas: {canvas_width}×{canvas_height} pixels")
+    print(f"Creating clean canvas: {canvas_width}×{canvas_height} pixels")
     print(
         f"Wordmaps resized from {wordmap_width}×{wordmap_height} to {small_wordmap_width}×{small_wordmap_height}"
     )
@@ -221,66 +218,13 @@ def create_sentence_flow_visualization(
     # Create canvas
     canvas = Image.new("RGB", (canvas_width, canvas_height), "white")
 
-    # Create a drawing context for word labels
-    draw = ImageDraw.Draw(canvas)
-
-    # Try to load a font (fallback to default if not available)
-    try:
-        font_huge = ImageFont.truetype(
-            "/System/Library/Fonts/Arial.ttf", 36
-        )  # Much larger
-        font_large = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 18)
-        font_small = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 10)
-    except:
-        font_huge = ImageFont.load_default()
-        font_large = ImageFont.load_default()
-        font_small = ImageFont.load_default()
-
     # Process each word
     for word_idx, (word, embedding) in enumerate(zip(words, word_embeddings)):
         print(f"Processing word '{word}' ({word_idx + 1}/{n_words})")
 
-        # Calculate Y offset for this word's grid (including separators)
+        # Calculate Y offset for this word's grid
         word_y_offset = border_thickness + word_idx * (
             word_block_height + word_separator_height
-        )
-
-        # Draw THICK BLACK border around entire word block
-        word_block_rect = [
-            border_thickness,
-            word_y_offset - border_thickness,
-            canvas_width - border_thickness,
-            word_y_offset + word_block_height + border_thickness,
-        ]
-        draw.rectangle(
-            word_block_rect,
-            fill=(240, 240, 240),
-            outline="black",
-            width=border_thickness,
-        )
-
-        # Add HUGE word label
-        label_x = 20
-        label_y = word_y_offset + (word_block_height // 2)
-
-        # Draw word label with large background
-        label_bbox = draw.textbbox(
-            (label_x, label_y), word, font=font_huge, anchor="lm"
-        )
-        label_bg_rect = [
-            label_bbox[0] - 10,
-            label_bbox[1] - 10,
-            label_bbox[2] + 10,
-            label_bbox[3] + 10,
-        ]
-        draw.rectangle(label_bg_rect, fill="white", outline="black", width=2)
-
-        # Draw word label
-        draw.text((label_x, label_y), word, fill="black", font=font_huge, anchor="lm")
-
-        # Add word index below
-        draw.text(
-            (label_x, label_y + 50), "", fill=(60, 60, 60), font=font_large, anchor="lm"
         )
 
         # Process each dimension for this word
@@ -293,7 +237,7 @@ def create_sentence_flow_visualization(
             col_in_grid = dim % grid_cols
 
             # Calculate pixel position
-            x = word_label_width + (col_in_grid * small_wordmap_width)
+            x = border_thickness + (col_in_grid * small_wordmap_width)
             y = word_y_offset + (row_in_grid * small_wordmap_height)
 
             # Get embedding value and calculate opacity
@@ -320,42 +264,19 @@ def create_sentence_flow_visualization(
 
             if embed_value < 0:
                 # Negative values: invert colors to show suppression/inhibition
-                # Convert to numpy for easier manipulation
                 img_array = np.array(wordmap_img)
-
-                # Invert RGB channels (keep alpha unchanged)
                 img_array[:, :, 0] = 255 - img_array[:, :, 0]  # Invert red
                 img_array[:, :, 1] = 255 - img_array[:, :, 1]  # Invert green
                 img_array[:, :, 2] = 255 - img_array[:, :, 2]  # Invert blue
-
-                # Convert back to PIL image
                 wordmap_img = Image.fromarray(img_array, "RGBA")
 
-            # Apply opacity based on absolute value (same for positive and negative)
-            alpha = wordmap_img.split()[-1]  # Get alpha channel
-            alpha = alpha.point(lambda p: int(p * opacity))  # Apply opacity
+            # Apply opacity based on absolute value
+            alpha = wordmap_img.split()[-1]
+            alpha = alpha.point(lambda p: int(p * opacity))
             wordmap_img.putalpha(alpha)
 
             # Paste onto canvas
             canvas.paste(wordmap_img, (x, y), wordmap_img)
-
-            # Add border around each small wordmap
-            wordmap_rect = [x, y, x + small_wordmap_width, y + small_wordmap_height]
-            draw.rectangle(wordmap_rect, outline=(150, 150, 150), width=1)
-
-        # Add dimension labels at the top of the first word's grid
-        if word_idx == 0:
-            for dim in range(min(n_embd, grid_cols)):  # Only show top row labels
-                col_in_grid = dim % grid_cols
-                x = (
-                    word_label_width
-                    + (col_in_grid * small_wordmap_width)
-                    + (small_wordmap_width // 2)
-                )
-                y = word_y_offset - 15
-                draw.text(
-                    (x, y), f"D{dim}", fill=(80, 80, 80), font=font_small, anchor="mb"
-                )
 
     # Save the visualization
     output_path = os.path.join(output_dir, f"sentence_flow_{representation_type}.png")
@@ -373,6 +294,15 @@ def generate_html_page(
     # Calculate grid dimensions for display
     grid_cols = int(np.ceil(np.sqrt(n_embd)))
     grid_rows = int(np.ceil(n_embd / grid_cols))
+
+    # Create word labels HTML for display alongside images
+    words_html = ""
+    for i, word in enumerate(words):
+        words_html += f"""
+            <div class="word-label">
+                <span class="word-text">{word}</span>
+                <span class="word-index">Word {i+1}</span>
+            </div>"""
 
     # Create data tables for each representation type if we have embeddings
     data_tables_html = ""
@@ -412,7 +342,8 @@ def generate_html_page(
                 </div>"""
 
     # Create visualization tabs
-    visualization_tabs_html = """
+    visualization_tabs_html = (
+        """
         <div class="representation-tabs">
             <h3>Representation Type:</h3>
             <div class="tab-buttons">
@@ -424,15 +355,37 @@ def generate_html_page(
 
         <div class="visualizations-container">
             <div class="visualization" id="viz_embeddings" style="display: block;">
-                <img src="sentence_flow_embeddings.png" alt="Token Embeddings Visualization">
+                <div class="viz-content">
+                    <div class="word-labels">"""
+        + words_html
+        + """</div>
+                    <div class="viz-image">
+                        <img src="sentence_flow_embeddings.png" alt="Token Embeddings Visualization">
+                    </div>
+                </div>
             </div>
             <div class="visualization" id="viz_positional" style="display: none;">
-                <img src="sentence_flow_positional.png" alt="Positional Encodings Visualization">
+                <div class="viz-content">
+                    <div class="word-labels">"""
+        + words_html
+        + """</div>
+                    <div class="viz-image">
+                        <img src="sentence_flow_positional.png" alt="Positional Encodings Visualization">
+                    </div>
+                </div>
             </div>
             <div class="visualization" id="viz_combined" style="display: none;">
-                <img src="sentence_flow_combined.png" alt="Combined Representation Visualization">
+                <div class="viz-content">
+                    <div class="word-labels">"""
+        + words_html
+        + """</div>
+                    <div class="viz-image">
+                        <img src="sentence_flow_combined.png" alt="Combined Representation Visualization">
+                    </div>
+                </div>
             </div>
         </div>"""
+    )
 
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -449,7 +402,7 @@ def generate_html_page(
             line-height: 1.6;
         }}
         .container {{
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             background: white;
             border-radius: 8px;
@@ -509,10 +462,53 @@ def generate_html_page(
             margin: 30px 0;
         }}
         .visualization {{
-            text-align: center;
             margin: 30px 0;
         }}
-        .visualization img {{
+        .viz-content {{
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+        }}
+        .word-labels {{
+            min-width: 200px;
+            display: flex;
+            flex-direction: column;
+        }}
+        .word-label {{
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 2px solid #dee2e6;
+            text-align: center;
+            /* Calculate height to match image rows */
+            height: calc(({grid_rows} * 60px) - 4px); /* 60px per small wordmap, minus border adjustment */
+            margin-bottom: 20px; /* Match word_separator_height from image generation */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }}
+        .word-label:last-child {{
+            margin-bottom: 0;
+        }}
+        .word-text {{
+            display: block;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }}
+        .word-index {{
+            display: block;
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }}
+        .viz-image {{
+            flex: 1;
+            text-align: center;
+        }}
+        .viz-image img {{
             max-width: 100%;
             height: auto;
             border: 2px solid #ddd;
@@ -627,6 +623,19 @@ def generate_html_page(
         }}
         .data-toggle button:hover {{
             background: #218838;
+        }}
+
+        /* Responsive design */
+        @media (max-width: 1000px) {{
+            .viz-content {{
+                flex-direction: column;
+            }}
+            .word-labels {{
+                min-width: unset;
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: center;
+            }}
         }}
     </style>
 </head>
