@@ -13,6 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
@@ -47,6 +48,8 @@ def create_position_wordcloud(dimension_values, dimension_idx, block_size):
 
     # Create position-value pairs
     position_weights = {}
+    # Store actual values for data display
+    dimension_data = {"positive": [], "negative": []}
 
     # Get absolute values for sizing (larger absolute values = bigger text)
     abs_values = np.abs(dimension_values)
@@ -57,9 +60,20 @@ def create_position_wordcloud(dimension_values, dimension_idx, block_size):
     else:
         normalized_weights = np.ones_like(abs_values)
 
-    # Create position labels with weights
+    # Create position labels with weights and collect data
     for pos in range(block_size):
         position_weights[f"[{pos}]"] = normalized_weights[pos]
+
+        # Collect data for HTML display
+        value = dimension_values[pos]
+        if value >= 0:
+            dimension_data["positive"].append({"position": pos, "value": float(value)})
+        else:
+            dimension_data["negative"].append({"position": pos, "value": float(value)})
+
+    # Sort by absolute value (highest magnitude first)
+    dimension_data["positive"].sort(key=lambda x: abs(x["value"]), reverse=True)
+    dimension_data["negative"].sort(key=lambda x: abs(x["value"]), reverse=True)
 
     # Only include positions with significant weights to avoid clutter
     # Keep top 50% of positions by absolute value
@@ -109,7 +123,7 @@ def create_position_wordcloud(dimension_values, dimension_idx, block_size):
         min_font_size=8,
     ).generate_from_frequencies(significant_positions)
 
-    return wordcloud
+    return wordcloud, dimension_data
 
 
 def visualize_positional_embeddings(pos_embeddings, block_size, model_args, output_dir):
@@ -122,6 +136,9 @@ def visualize_positional_embeddings(pos_embeddings, block_size, model_args, outp
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
 
+    # Collect dimension data for HTML
+    all_dimension_data = {}
+
     # Generate wordmap for each dimension
     for dim in range(n_embd):
         print(f"Processing dimension {dim}/{n_embd}")
@@ -130,7 +147,10 @@ def visualize_positional_embeddings(pos_embeddings, block_size, model_args, outp
         dimension_values = pos_embeddings[:, dim].numpy()
 
         # Create word cloud
-        wordcloud = create_position_wordcloud(dimension_values, dim, block_size)
+        wordcloud, dimension_data = create_position_wordcloud(
+            dimension_values, dim, block_size
+        )
+        all_dimension_data[dim] = dimension_data
 
         # Create plot
         plt.figure(figsize=(12, 8))
@@ -159,10 +179,16 @@ def visualize_positional_embeddings(pos_embeddings, block_size, model_args, outp
                     f.write(f"Position {pos}: {dimension_values[pos]:.6f}\n")
 
     print(f"Saved {n_embd} position wordmaps to: {output_dir}")
+    return all_dimension_data
 
 
-def generate_html_summary(output_dir, model_name, n_embd, block_size):
+def generate_html_summary(
+    output_dir, model_name, n_embd, block_size, all_dimension_data
+):
     """Generate HTML page showing all positional wordmaps."""
+
+    # Convert dimension data to JSON for embedding in HTML
+    dimension_data_json = json.dumps(all_dimension_data)
 
     # Create grid of all dimensions
     grid_html = ""
@@ -173,7 +199,7 @@ def generate_html_summary(output_dir, model_name, n_embd, block_size):
             grid_html += "<div class='wordmap-row'>"
 
         grid_html += f"""
-            <div class='wordmap-item'>
+            <div class='wordmap-item' onclick="openModal({dim})">
                 <h4>Dimension {dim}</h4>
                 <img src='position_dimension_{dim}.png' alt='Position Dimension {dim}'>
             </div>"""
@@ -235,6 +261,12 @@ def generate_html_summary(output_dir, model_name, n_embd, block_size):
             border: 2px solid #ddd;
             border-radius: 8px;
             overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }}
+        .wordmap-item:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }}
         .wordmap-item h4 {{
             margin: 0;
@@ -246,6 +278,104 @@ def generate_html_summary(output_dir, model_name, n_embd, block_size):
             width: 100%;
             height: auto;
             display: block;
+        }}
+        .modal {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }}
+        .modal-content {{
+            background: white;
+            border-radius: 8px;
+            max-width: 90%;
+            max-height: 90%;
+            overflow: auto;
+            position: relative;
+        }}
+        .modal .close {{
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            color: #666;
+            font-size: 30px;
+            cursor: pointer;
+            z-index: 1001;
+        }}
+        .modal-header {{
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            background: #f8f9fa;
+        }}
+        .modal-body {{
+            padding: 20px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }}
+        .modal-image {{
+            flex: 1;
+            min-width: 300px;
+        }}
+        .modal-image img {{
+            width: 100%;
+            border-radius: 4px;
+        }}
+        .modal-data {{
+            flex: 1;
+            min-width: 300px;
+        }}
+        .data-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }}
+        .data-table th {{
+            background: #28a745;
+            color: white;
+            padding: 10px;
+            text-align: left;
+        }}
+        .data-table td {{
+            padding: 8px 10px;
+            border-bottom: 1px solid #eee;
+        }}
+        .data-table .positive {{
+            color: #000;
+        }}
+        .data-table .negative {{
+            color: #CC0000;
+        }}
+        .data-section {{
+            margin-bottom: 20px;
+        }}
+        .data-section h4 {{
+            margin: 0 0 10px 0;
+            color: #333;
+        }}
+        .button-group {{
+            margin: 10px 0;
+            text-align: center;
+        }}
+        .button-group button {{
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            margin: 0 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }}
+        .button-group button:hover {{
+            background: #218838;
         }}
         .stats {{
             display: grid;
@@ -307,6 +437,7 @@ def generate_html_summary(output_dir, model_name, n_embd, block_size):
             </div>
 
             <h2>All Positional Embedding Dimensions</h2>
+            <p>Click on any dimension to view the position wordmap and exact positional values</p>
             {grid_html}
 
             <div class="info">
@@ -316,6 +447,120 @@ def generate_html_summary(output_dir, model_name, n_embd, block_size):
             </div>
         </div>
     </div>
+
+    <div class="modal" id="modal" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <div class="modal-header">
+                <h2 id="modal-title">Position Dimension X</h2>
+                <div class="button-group">
+                    <button onclick="showSection('image')">Position Wordmap</button>
+                    <button onclick="showSection('data')">Exact Values</button>
+                    <button onclick="showSection('both')">Both</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="modal-image" id="modal-image-section">
+                    <img id="modal-img" src="" alt="">
+                </div>
+                <div class="modal-data" id="modal-data-section">
+                    <div class="data-section">
+                        <h4>Highest Positive Values</h4>
+                        <table class="data-table" id="positive-table">
+                            <thead>
+                                <tr><th>Position</th><th>Value</th></tr>
+                            </thead>
+                            <tbody id="positive-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="data-section">
+                        <h4>Most Negative Values</h4>
+                        <table class="data-table" id="negative-table">
+                            <thead>
+                                <tr><th>Position</th><th>Value</th></tr>
+                            </thead>
+                            <tbody id="negative-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dimensionData = {dimension_data_json};
+        let currentView = 'both';
+
+        function openModal(dimension) {{
+            const modal = document.getElementById('modal');
+            const modalImg = document.getElementById('modal-img');
+            const modalTitle = document.getElementById('modal-title');
+
+            modalImg.src = `position_dimension_${{dimension}}.png`;
+            modalTitle.textContent = `Position Dimension ${{dimension}}`;
+
+            loadDimensionData(dimension);
+            showSection(currentView);
+            modal.style.display = 'flex';
+        }}
+
+        function loadDimensionData(dimension) {{
+            const data = dimensionData[dimension];
+            if (!data) {{
+                console.log('No data for dimension', dimension);
+                return;
+            }}
+
+            const positiveTbody = document.getElementById('positive-tbody');
+            const negativeTbody = document.getElementById('negative-tbody');
+
+            positiveTbody.innerHTML = '';
+            negativeTbody.innerHTML = '';
+
+            if (data.positive) {{
+                data.positive.forEach(item => {{
+                    const row = positiveTbody.insertRow();
+                    row.innerHTML = `<td class="positive">[${{item.position}}]</td><td class="positive">${{item.value.toFixed(6)}}</td>`;
+                }});
+            }}
+
+            if (data.negative) {{
+                data.negative.forEach(item => {{
+                    const row = negativeTbody.insertRow();
+                    row.innerHTML = `<td class="negative">[${{item.position}}]</td><td class="negative">${{item.value.toFixed(6)}}</td>`;
+                }});
+            }}
+        }}
+
+        function showSection(section) {{
+            currentView = section;
+            const imageSection = document.getElementById('modal-image-section');
+            const dataSection = document.getElementById('modal-data-section');
+
+            if (section === 'image') {{
+                imageSection.style.display = 'block';
+                dataSection.style.display = 'none';
+            }} else if (section === 'data') {{
+                imageSection.style.display = 'none';
+                dataSection.style.display = 'block';
+            }} else {{ // both
+                imageSection.style.display = 'block';
+                dataSection.style.display = 'block';
+            }}
+        }}
+
+        function closeModal(event) {{
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('modal').style.display = 'none';
+        }}
+
+        // Close modal on escape key
+        document.addEventListener('keydown', function(e) {{
+            if (e.key === 'Escape') {{
+                closeModal();
+            }}
+        }});
+    </script>
 </body>
 </html>"""
 
@@ -346,10 +591,14 @@ def main():
     output_dir = os.path.join("visualizations", model_dir, "positional_wordmaps")
 
     # Generate visualizations
-    visualize_positional_embeddings(pos_embeddings, block_size, model_args, output_dir)
+    all_dimension_data = visualize_positional_embeddings(
+        pos_embeddings, block_size, model_args, output_dir
+    )
 
     # Generate HTML summary
-    generate_html_summary(output_dir, model_dir, pos_embeddings.shape[1], block_size)
+    generate_html_summary(
+        output_dir, model_dir, pos_embeddings.shape[1], block_size, all_dimension_data
+    )
 
     print(f"\nDone! Positional embeddings visualization saved to: {output_dir}/")
     print(f"View at: {output_dir}/index.html")
