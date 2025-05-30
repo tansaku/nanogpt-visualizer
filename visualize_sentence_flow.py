@@ -299,24 +299,14 @@ def create_sentence_flow_visualization(
             # Get embedding value and calculate opacity
             embed_value = embedding[dim]
 
-            if representation_type == "positional":
-                # For positional encodings, use direct mapping based on absolute value
-                # This ensures opacity directly reflects the positional embedding magnitude
-                max_abs_value = max(abs(v) for emb in word_embeddings for v in emb)
-                if max_abs_value > 0:
-                    opacity = abs(embed_value) / max_abs_value
-                    opacity = max(0.1, min(0.95, opacity))  # Ensure visibility
-                else:
-                    opacity = 0.5
+            # Use percentile-based mapping for better contrast (all representation types)
+            if max_val != min_val:
+                all_abs_values = np.abs(all_values)
+                percentile = np.mean(all_abs_values <= abs(embed_value))
+                opacity = np.power(percentile, 0.5)
+                opacity = max(0.2, min(0.95, opacity))
             else:
-                # For token embeddings, use percentile-based mapping for better contrast
-                if max_val != min_val:
-                    all_abs_values = np.abs(all_values)
-                    percentile = np.mean(all_abs_values <= abs(embed_value))
-                    opacity = np.power(percentile, 0.5)
-                    opacity = max(0.2, min(0.95, opacity))
-                else:
-                    opacity = 0.5
+                opacity = 0.5
 
             # Get the wordmap image and resize it
             wordmap_img = wordmap_images[dim].copy()
