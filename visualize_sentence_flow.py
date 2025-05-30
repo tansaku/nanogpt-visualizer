@@ -460,17 +460,21 @@ def generate_html_page(
         }}
         .visualizations-container {{
             margin: 30px 0;
+            padding-left: 220px; /* Make room for word labels positioned to the left */
+            text-align: center; /* Center the entire word+image combination */
         }}
         .visualization {{
             margin: 30px 0;
         }}
         .viz-content {{
-            display: flex;
-            gap: 30px;
-            align-items: flex-start;
+            position: relative;
+            display: inline-block;
         }}
         .word-labels {{
-            min-width: 200px;
+            position: absolute;
+            left: -202px; /* Position to the left of the image, accounting for label width + small gap */
+            top: 2px; /* Account for image border_thickness */
+            width: 200px;
             display: flex;
             flex-direction: column;
         }}
@@ -505,8 +509,7 @@ def generate_html_page(
             letter-spacing: 1px;
         }}
         .viz-image {{
-            flex: 1;
-            text-align: center;
+            display: inline-block;
         }}
         .viz-image img {{
             max-width: 100%;
