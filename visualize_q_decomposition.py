@@ -166,8 +166,8 @@ def create_q_dimension_wordcloud(
 ):
     """Create a wordcloud for a Q dimension showing vocabulary contributions."""
 
-    # Filter out very small contributions to avoid clutter
-    min_contribution_threshold = 0.001
+    # Filter out very small contributions to avoid clutter, but be less restrictive
+    min_contribution_threshold = 0.0001  # Much lower threshold
     filtered_contributions = {
         word: contrib
         for word, contrib in vocab_contributions.items()
@@ -180,55 +180,125 @@ def create_q_dimension_wordcloud(
 
     print(
         f"Creating wordcloud for Q dimension {q_dim} with {len(filtered_contributions)} words"
+        f" (out of {len(vocab_contributions)} total vocabulary words)"
     )
 
-    # Normalize contributions for wordcloud (need positive values)
+    # Separate positive and negative contributions
+    positive_contributions = {w: c for w, c in filtered_contributions.items() if c > 0}
+    negative_contributions = {w: c for w, c in filtered_contributions.items() if c < 0}
+
+    print(f"  Positive contributors: {len(positive_contributions)}")
+    print(f"  Negative contributors: {len(negative_contributions)}")
+
+    # Normalize contributions for wordcloud sizing
     max_abs_contrib = max(abs(c) for c in filtered_contributions.values())
 
-    # Create frequency dict for wordcloud (all positive values, proportional to absolute contribution)
-    frequencies = {}
-    for word, contrib in filtered_contributions.items():
-        # Use absolute value for size, but we'll color by sign later
-        frequencies[word] = abs(contrib) / max_abs_contrib * 100
+    # Create two separate wordclouds for positive and negative contributions
+    wordcloud_width = 800
+    wordcloud_height = 300  # Smaller height since we'll stack them
 
-    # Create wordcloud
-    wordcloud = WordCloud(
-        width=800,
-        height=600,
-        background_color="white",
-        max_words=100,
-        colormap="viridis",
-        relative_scaling=0.5,
-        min_font_size=8,
-    ).generate_from_frequencies(frequencies)
+    # Create positive wordcloud (black text)
+    if positive_contributions:
+        pos_frequencies = {}
+        for word, contrib in positive_contributions.items():
+            pos_frequencies[word] = abs(contrib) / max_abs_contrib * 100
 
-    # Convert to PIL image
-    wordcloud_img = wordcloud.to_image()
+        pos_wordcloud = WordCloud(
+            width=wordcloud_width,
+            height=wordcloud_height,
+            background_color="white",
+            max_words=200,  # More words allowed
+            color_func=lambda *args, **kwargs: "black",  # All black for positive
+            relative_scaling=0.5,
+            min_font_size=6,
+        ).generate_from_frequencies(pos_frequencies)
+
+        pos_img = pos_wordcloud.to_image()
+    else:
+        pos_img = Image.new("RGB", (wordcloud_width, wordcloud_height), "white")
+
+    # Create negative wordcloud (red text)
+    if negative_contributions:
+        neg_frequencies = {}
+        for word, contrib in negative_contributions.items():
+            neg_frequencies[word] = abs(contrib) / max_abs_contrib * 100
+
+        neg_wordcloud = WordCloud(
+            width=wordcloud_width,
+            height=wordcloud_height,
+            background_color="white",
+            max_words=200,  # More words allowed
+            color_func=lambda *args, **kwargs: "red",  # All red for negative
+            relative_scaling=0.5,
+            min_font_size=6,
+        ).generate_from_frequencies(neg_frequencies)
+
+        neg_img = neg_wordcloud.to_image()
+    else:
+        neg_img = Image.new("RGB", (wordcloud_width, wordcloud_height), "white")
+
+    # Combine the two wordclouds vertically
+    combined_height = wordcloud_height * 2 + 40  # Space for separator
+    combined_img = Image.new("RGB", (wordcloud_width, combined_height), "white")
+
+    # Paste positive wordcloud on top
+    combined_img.paste(pos_img, (0, 0))
+
+    # Add separator line and label
+    draw = ImageDraw.Draw(combined_img)
+    separator_y = wordcloud_height + 10
+    draw.line(
+        [(50, separator_y), (wordcloud_width - 50, separator_y)], fill="gray", width=2
+    )
+
+    try:
+        separator_font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 12)
+    except:
+        separator_font = ImageFont.load_default()
+
+    draw.text(
+        (50, separator_y + 5),
+        "Positive contributions (black) ↑",
+        fill="black",
+        font=separator_font,
+    )
+    draw.text(
+        (50, separator_y + 20),
+        "Negative contributions (red) ↓",
+        fill="red",
+        font=separator_font,
+    )
+
+    # Paste negative wordcloud on bottom
+    combined_img.paste(neg_img, (0, wordcloud_height + 40))
 
     # Apply opacity based on Q activation strength
-    # Normalize activation to 0-1 range for opacity
     max_possible_activation = max(abs(q_activation), 0.1)  # Avoid division by zero
     opacity = min(1.0, abs(q_activation) / max_possible_activation)
     opacity = max(0.2, opacity)  # Ensure minimum visibility
 
     # Apply opacity
-    if wordcloud_img.mode != "RGBA":
-        wordcloud_img = wordcloud_img.convert("RGBA")
+    if combined_img.mode != "RGBA":
+        combined_img = combined_img.convert("RGBA")
 
     # Apply opacity by modifying alpha channel
-    alpha = wordcloud_img.split()[-1]
+    alpha = (
+        combined_img.split()[-1]
+        if combined_img.mode == "RGBA"
+        else Image.new("L", combined_img.size, 255)
+    )
     alpha = alpha.point(lambda p: int(p * opacity))
-    wordcloud_img.putalpha(alpha)
+    combined_img.putalpha(alpha)
 
     # Create final image with label and stats
-    label_height = 80
-    final_width = 800
-    final_height = 600 + label_height
+    label_height = 100
+    final_width = wordcloud_width
+    final_height = combined_height + label_height
 
     final_img = Image.new("RGB", (final_width, final_height), "white")
 
-    # Paste wordcloud
-    final_img.paste(wordcloud_img, (0, 0), wordcloud_img)
+    # Paste combined wordcloud
+    final_img.paste(combined_img, (0, 0), combined_img)
 
     # Add labels
     draw = ImageDraw.Draw(final_img)
@@ -241,16 +311,22 @@ def create_q_dimension_wordcloud(
 
     # Title
     title = f"Q Dimension {q_dim} - Word: {word}"
-    draw.text((10, 610), title, fill="black", font=font_large)
+    draw.text((10, combined_height + 10), title, fill="black", font=font_large)
 
     # Stats
-    stats_text = f"Activation: {q_activation:.4f} | Opacity: {opacity:.2f} | Top contrib: {max_abs_contrib:.4f}"
-    draw.text((10, 640), stats_text, fill="gray", font=font_small)
+    stats_text = f"Activation: {q_activation:.4f} | Opacity: {opacity:.2f} | Max contrib: {max_abs_contrib:.4f}"
+    draw.text((10, combined_height + 40), stats_text, fill="gray", font=font_small)
 
-    # Color indicator for positive/negative activation
+    # Contribution counts
+    contrib_text = f"Pos: {len(positive_contributions)} words | Neg: {len(negative_contributions)} words | Total: {len(filtered_contributions)}/{len(vocab_contributions)}"
+    draw.text((10, combined_height + 60), contrib_text, fill="gray", font=font_small)
+
+    # Color indicator for overall activation direction
     color = "green" if q_activation >= 0 else "red"
-    activation_text = f"{'Positive' if q_activation >= 0 else 'Negative'} Activation"
-    draw.text((10, 660), activation_text, fill=color, font=font_small)
+    activation_text = (
+        f"Overall: {'Positive' if q_activation >= 0 else 'Negative'} Activation"
+    )
+    draw.text((10, combined_height + 80), activation_text, fill=color, font=font_small)
 
     # Save
     output_path = os.path.join(output_dir, f"q_dim_{q_dim:02d}_{word}.png")
