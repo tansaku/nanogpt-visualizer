@@ -166,32 +166,76 @@ def create_q_dimension_wordcloud(
 ):
     """Create a wordcloud for a Q dimension showing vocabulary contributions."""
 
-    # Filter out very small contributions to avoid clutter, but be less restrictive
-    min_contribution_threshold = 0.0001  # Much lower threshold
+    print(f"\n=== DEBUG Q Dimension {q_dim} ===")
+    print(f"Q activation: {q_activation:.6f}")
+    print(f"Total vocab contributions computed: {len(vocab_contributions)}")
+
+    # Show contribution statistics
+    all_contribs = list(vocab_contributions.values())
+    if all_contribs:
+        print(f"Contribution range: [{min(all_contribs):.6f}, {max(all_contribs):.6f}]")
+        print(f"Contribution mean: {np.mean(all_contribs):.6f}")
+        print(
+            f"Non-zero contributions: {sum(1 for c in all_contribs if abs(c) > 1e-10)}"
+        )
+
+    # Start with a very low threshold, we can always increase it later
+    min_contribution_threshold = 1e-6  # Very permissive threshold
     filtered_contributions = {
         word: contrib
         for word, contrib in vocab_contributions.items()
         if abs(contrib) >= min_contribution_threshold
     }
 
-    if not filtered_contributions:
-        print(f"No significant contributions for Q dimension {q_dim}")
-        return None
-
     print(
-        f"Creating wordcloud for Q dimension {q_dim} with {len(filtered_contributions)} words"
-        f" (out of {len(vocab_contributions)} total vocabulary words)"
+        f"After filtering (threshold {min_contribution_threshold}): {len(filtered_contributions)} words"
     )
+
+    # If still too few words, take the top contributors regardless of threshold
+    if len(filtered_contributions) < 20:
+        print(
+            f"Too few words ({len(filtered_contributions)}), taking top 50 contributors regardless of threshold"
+        )
+        sorted_contribs = sorted(
+            vocab_contributions.items(), key=lambda x: abs(x[1]), reverse=True
+        )
+        filtered_contributions = dict(sorted_contribs[:50])
+        print(f"Now have {len(filtered_contributions)} words")
+
+    if not filtered_contributions:
+        print(f"ERROR: No contributions found for Q dimension {q_dim}!")
+        # Create a placeholder image
+        placeholder_img = Image.new("RGB", (800, 640), "lightgray")
+        draw = ImageDraw.Draw(placeholder_img)
+        try:
+            font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 24)
+        except:
+            font = ImageFont.load_default()
+
+        text = f"No contributions\nQ Dim {q_dim}\nActivation: {q_activation:.6f}"
+        draw.text((50, 300), text, fill="black", font=font)
+
+        output_path = os.path.join(output_dir, f"q_dim_{q_dim:02d}_{word}.png")
+        placeholder_img.save(output_path, "PNG")
+        return output_path
 
     # Separate positive and negative contributions
     positive_contributions = {w: c for w, c in filtered_contributions.items() if c > 0}
     negative_contributions = {w: c for w, c in filtered_contributions.items() if c < 0}
 
-    print(f"  Positive contributors: {len(positive_contributions)}")
-    print(f"  Negative contributors: {len(negative_contributions)}")
+    print(f"Positive contributors: {len(positive_contributions)}")
+    print(f"Negative contributors: {len(negative_contributions)}")
+
+    if positive_contributions:
+        max_pos = max(positive_contributions.values())
+        print(f"Max positive contribution: {max_pos:.6f}")
+    if negative_contributions:
+        min_neg = min(negative_contributions.values())
+        print(f"Max negative contribution: {min_neg:.6f}")
 
     # Normalize contributions for wordcloud sizing
     max_abs_contrib = max(abs(c) for c in filtered_contributions.values())
+    print(f"Max absolute contribution: {max_abs_contrib:.6f}")
 
     # Create two separate wordclouds for positive and negative contributions
     wordcloud_width = 800
@@ -214,8 +258,10 @@ def create_q_dimension_wordcloud(
         ).generate_from_frequencies(pos_frequencies)
 
         pos_img = pos_wordcloud.to_image()
+        print(f"Generated positive wordcloud with {len(pos_frequencies)} words")
     else:
         pos_img = Image.new("RGB", (wordcloud_width, wordcloud_height), "white")
+        print("No positive contributions - created blank positive wordcloud")
 
     # Create negative wordcloud (red text)
     if negative_contributions:
@@ -234,8 +280,10 @@ def create_q_dimension_wordcloud(
         ).generate_from_frequencies(neg_frequencies)
 
         neg_img = neg_wordcloud.to_image()
+        print(f"Generated negative wordcloud with {len(neg_frequencies)} words")
     else:
         neg_img = Image.new("RGB", (wordcloud_width, wordcloud_height), "white")
+        print("No negative contributions - created blank negative wordcloud")
 
     # Combine the two wordclouds vertically
     combined_height = wordcloud_height * 2 + 40  # Space for separator
@@ -272,10 +320,16 @@ def create_q_dimension_wordcloud(
     # Paste negative wordcloud on bottom
     combined_img.paste(neg_img, (0, wordcloud_height + 40))
 
-    # Apply opacity based on Q activation strength
-    max_possible_activation = max(abs(q_activation), 0.1)  # Avoid division by zero
-    opacity = min(1.0, abs(q_activation) / max_possible_activation)
-    opacity = max(0.2, opacity)  # Ensure minimum visibility
+    # Improved opacity calculation - ensure we always have reasonable visibility
+    if abs(q_activation) < 1e-6:
+        opacity = 0.3  # Minimum opacity for very weak activations
+        print(f"Very weak activation, using minimum opacity: {opacity}")
+    else:
+        # Use a more reasonable scale - find the max activation across all dimensions for normalization
+        # For now, just use a simple absolute scaling
+        opacity = min(1.0, abs(q_activation) * 10)  # Scale up weak activations
+        opacity = max(0.3, opacity)  # Ensure minimum visibility
+        print(f"Computed opacity: {opacity}")
 
     # Apply opacity
     if combined_img.mode != "RGBA":
@@ -333,6 +387,7 @@ def create_q_dimension_wordcloud(
     final_img.save(output_path, "PNG")
 
     print(f"Saved Q dimension {q_dim} wordcloud: {output_path}")
+    print(f"=== END DEBUG Q Dimension {q_dim} ===\n")
     return output_path
 
 
