@@ -188,21 +188,18 @@ def generate_html_summary(
     dimension_data_json = json.dumps(all_dimension_data)
 
     # Create grid of all dimensions
-    grid_html = ""
-    cols = 4  # Show 4 wordmaps per row
+    grid_html = "<div class='grid'>"
 
     for dim in range(n_embd):
-        if dim % cols == 0:
-            grid_html += "<div class='wordmap-row'>"
-
         grid_html += f"""
-            <div class='wordmap-item' onclick="openModal({dim})">
-                <h4>Dimension {dim}</h4>
-                <img src='position_dimension_{dim}.png' alt='Position Dimension {dim}'>
+            <div class="dimension-card" onclick="openModal({dim})">
+                <img src="position_dimension_{dim}.png" alt="Position Dimension {dim}">
+                <div class="info">
+                    <h3>Position Dimension {dim}</h3>
+                </div>
             </div>"""
 
-        if (dim + 1) % cols == 0 or dim == n_embd - 1:
-            grid_html += "</div>"
+    grid_html += "</div>"
 
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -219,7 +216,7 @@ def generate_html_summary(
             line-height: 1.6;
         }}
         .container {{
-            max-width: 1400px;
+            max-width: 1800px;
             margin: 0 auto;
             background: white;
             border-radius: 8px;
@@ -239,42 +236,41 @@ def generate_html_summary(
         .content {{
             padding: 30px;
         }}
-        .info {{
+        .description-box {{
             background: #e8f5e8;
             padding: 20px;
             border-radius: 8px;
             margin: 20px 0;
         }}
-        .wordmap-row {{
-            display: flex;
+        .grid {{
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
             gap: 20px;
-            margin: 20px 0;
-            flex-wrap: wrap;
+            margin-top: 20px;
         }}
-        .wordmap-item {{
-            flex: 1;
-            min-width: 300px;
-            text-align: center;
-            border: 2px solid #ddd;
+        .dimension-card {{
+            border: 1px solid #ddd;
             border-radius: 8px;
             overflow: hidden;
-            cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
         }}
-        .wordmap-item:hover {{
+        .dimension-card:hover {{
             transform: translateY(-2px);
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }}
-        .wordmap-item h4 {{
-            margin: 0;
-            padding: 10px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #ddd;
-        }}
-        .wordmap-item img {{
+        .dimension-card img {{
             width: 100%;
-            height: auto;
-            display: block;
+            height: 150px;
+            object-fit: cover;
+        }}
+        .dimension-card .info {{
+            padding: 15px;
+            text-align: center;
+        }}
+        .dimension-card .info h3 {{
+            margin: 0 0 5px 0;
+            color: #333;
         }}
         .modal {{
             display: none;
@@ -421,7 +417,7 @@ def generate_html_summary(
                 </div>
             </div>
 
-            <div class="info">
+            <div class="description-box">
                 <h3>Understanding Positional Embeddings</h3>
                 <p>These visualizations show the <strong>learned positional embeddings</strong> from your NanoGPT model:</p>
                 <ul>
@@ -437,7 +433,7 @@ def generate_html_summary(
             <p>Click on any dimension to view the position wordmap and exact positional values</p>
             {grid_html}
 
-            <div class="info">
+            <div class="description-box">
                 <h3>Next Steps</h3>
                 <p>These positional wordmaps can be used with the sentence flow visualizer to show how sequence position affects representation.
                 Each position in your input sequence will activate these learned positional patterns.</p>
