@@ -303,7 +303,7 @@ def generate_html_index(
             background: #f5f5f5;
         }}
         .container {{
-            max-width: 1200px;
+            max-width: 1800px;
             margin: 0 auto;
             background: white;
             border-radius: 8px;
@@ -329,7 +329,7 @@ def generate_html_index(
         }}
         .grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            grid-template-columns: repeat(6, 1fr);
             gap: 20px;
             margin-top: 20px;
         }}
