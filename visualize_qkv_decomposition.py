@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-Q Decomposition Visualizer for NanoGPT
+Q/K/V Decomposition Visualizer for NanoGPT
 
-Decomposes Q transformation dimensions into vocabulary word contributions.
-Shows what each Q output dimension represents in terms of vocabulary words,
-with opacity based on input word activation.
+Decomposes Q, K, and V transformation dimensions into vocabulary word contributions.
+Shows what each dimension represents in terms of vocabulary words.
 """
 
 import os
@@ -51,16 +50,16 @@ def load_tokenizer():
     return None, None
 
 
-def load_q_matrix(model_state, model_args, layer_idx=0):
-    """Load Q weight matrix from the first attention layer."""
-    print(f"Loading Q matrix from layer {layer_idx}")
+def load_qkv_matrices(model_state, model_args, layer_idx=0):
+    """Load Q, K, V weight matrices from the first attention layer."""
+    print(f"Loading Q/K/V matrices from layer {layer_idx}")
 
     n_embd = model_args["n_embd"]
     attention_key = f"transformer.h.{layer_idx}.attn.c_attn.weight"
 
     if attention_key not in model_state:
         print(f"Error: Attention layer {layer_idx} not found")
-        return None
+        return None, None, None
 
     c_attn_weight = model_state[attention_key]
     print(f"Found attention matrix: {c_attn_weight.shape}")
@@ -71,13 +70,15 @@ def load_q_matrix(model_state, model_args, layer_idx=0):
         c_attn_weight = c_attn_weight.T  # Now [n_embd, 3*n_embd]
 
     if c_attn_weight.shape[1] == 3 * n_embd:
-        # Extract just the Q matrix
-        W_q = c_attn_weight[:, :n_embd].numpy()  # [n_embd, n_embd]
-        print(f"Extracted Q matrix: {W_q.shape}")
-        return W_q
+        # Extract Q, K, V matrices
+        W_q = c_attn_weight[:, :n_embd].numpy()
+        W_k = c_attn_weight[:, n_embd : 2 * n_embd].numpy()
+        W_v = c_attn_weight[:, 2 * n_embd :].numpy()
+        print(f"Extracted Q: {W_q.shape}, K: {W_k.shape}, V: {W_v.shape}")
+        return W_q, W_k, W_v
     else:
         print(f"Unexpected c_attn shape: {c_attn_weight.shape}")
-        return None
+        return None, None, None
 
 
 def get_word_representation(word, stoi, token_embeddings, pos_embeddings, position=0):
@@ -108,35 +109,19 @@ def get_word_representation(word, stoi, token_embeddings, pos_embeddings, positi
     return combined_repr
 
 
-def compute_q_activations(word_repr, W_q):
-    """Compute Q activations for the word representation."""
-    q_activations = word_repr @ W_q  # [n_embd] @ [n_embd, n_embd] = [n_embd]
-
-    print(
-        f"Q activations range: [{q_activations.min():.3f}, {q_activations.max():.3f}]"
-    )
-    print(
-        f"Q activations mean: {q_activations.mean():.3f}, std: {q_activations.std():.3f}"
-    )
-
-    return q_activations
+def compute_transformed_activations(word_repr, W_matrix):
+    """Compute Q, K, or V activations for the word representation."""
+    activations = word_repr @ W_matrix  # [n_embd] @ [n_embd, n_embd] = [n_embd]
+    return activations
 
 
-def compute_vocab_contributions_for_q_dim(token_embeddings, W_q, q_dim, itos):
-    """Compute how much each vocabulary word contributes to a specific Q output dimension."""
-    print(f"Computing vocabulary contributions for Q dimension {q_dim}")
-
-    vocab_size = token_embeddings.shape[0]
-    n_embd = token_embeddings.shape[1]
-
-    # Get the Q weights for this output dimension
-    q_weights_for_dim = W_q[
-        :, q_dim
-    ]  # [n_embd] - weights from each input dim to this Q output dim
+def compute_vocab_contributions_for_dim(token_embeddings, W_matrix, dim, itos):
+    """Compute how much each vocabulary word contributes to a specific output dimension."""
+    q_weights_for_dim = W_matrix[:, dim]
 
     vocab_contributions = {}
 
-    for token_id in range(vocab_size):
+    for token_id in range(token_embeddings.shape[0]):
         if token_id < len(itos):
             word = itos[token_id]
 
@@ -161,13 +146,13 @@ def compute_vocab_contributions_for_q_dim(token_embeddings, W_q, q_dim, itos):
     return vocab_contributions
 
 
-def create_q_dimension_wordcloud(
-    vocab_contributions, q_activation, q_dim, output_dir, word
+def create_dimension_wordcloud(
+    vocab_contributions, activation, dim, output_dir, word, matrix_name
 ):
-    """Create a wordcloud for a Q dimension showing vocabulary contributions."""
+    """Create a wordcloud for a dimension showing vocabulary contributions."""
 
-    print(f"\n=== DEBUG Q Dimension {q_dim} ===")
-    print(f"Q activation: {q_activation:.6f}")
+    print(f"\n=== DEBUG {matrix_name} Dimension {dim} ===")
+    print(f"{matrix_name} activation: {activation:.6f}")
     print(f"Total vocab contributions computed: {len(vocab_contributions)}")
 
     # Show contribution statistics
@@ -203,7 +188,7 @@ def create_q_dimension_wordcloud(
         print(f"Now have {len(filtered_contributions)} words")
 
     if not filtered_contributions:
-        print(f"ERROR: No contributions found for Q dimension {q_dim}!")
+        print(f"ERROR: No contributions found for {matrix_name} dimension {dim}!")
         # Create a placeholder image
         placeholder_img = Image.new("RGB", (800, 640), "lightgray")
         draw = ImageDraw.Draw(placeholder_img)
@@ -212,10 +197,14 @@ def create_q_dimension_wordcloud(
         except:
             font = ImageFont.load_default()
 
-        text = f"No contributions\nQ Dim {q_dim}\nActivation: {q_activation:.6f}"
+        text = (
+            f"No contributions\n{matrix_name} Dim {dim}\nActivation: {activation:.6f}"
+        )
         draw.text((50, 300), text, fill="black", font=font)
 
-        output_path = os.path.join(output_dir, f"q_dim_{q_dim:02d}_{word}.png")
+        output_path = os.path.join(
+            output_dir, f"{matrix_name.lower()}_dim_{dim:02d}_{word}.png"
+        )
         placeholder_img.save(output_path, "PNG")
         return output_path
 
@@ -243,13 +232,13 @@ def create_q_dimension_wordcloud(
     wordcloud_img = wordcloud.to_image()
 
     # Improved opacity calculation - ensure we always have reasonable visibility
-    if abs(q_activation) < 1e-6:
+    if abs(activation) < 1e-6:
         opacity = 0.3  # Minimum opacity for very weak activations
         print(f"Very weak activation, using minimum opacity: {opacity}")
     else:
         # Use a more reasonable scale - find the max activation across all dimensions for normalization
         # For now, just use a simple absolute scaling
-        opacity = min(1.0, abs(q_activation) * 10)  # Scale up weak activations
+        opacity = min(1.0, abs(activation) * 10)  # Scale up weak activations
         opacity = max(0.3, opacity)  # Ensure minimum visibility
         print(f"Computed opacity: {opacity}")
 
@@ -282,7 +271,7 @@ def create_q_dimension_wordcloud(
         font_small = ImageFont.load_default()
 
     # Title
-    title = f"Q Dimension {q_dim} - Word: {word}"
+    title = f"{matrix_name} Dimension {dim} - Word: {word}"
     draw.text((10, wordcloud_height + 10), title, fill="black", font=font_large)
 
     max_abs_contrib = (
@@ -292,7 +281,7 @@ def create_q_dimension_wordcloud(
     )
 
     # Stats
-    stats_text = f"Activation: {q_activation:.4f} | Opacity: {opacity:.2f} | Max contrib: {max_abs_contrib:.4f}"
+    stats_text = f"Activation: {activation:.4f} | Opacity: {opacity:.2f} | Max contrib: {max_abs_contrib:.4f}"
     draw.text((10, wordcloud_height + 40), stats_text, fill="gray", font=font_small)
 
     positive_contributions = {w: c for w, c in filtered_contributions.items() if c > 0}
@@ -303,23 +292,25 @@ def create_q_dimension_wordcloud(
     draw.text((10, wordcloud_height + 60), contrib_text, fill="gray", font=font_small)
 
     # Color indicator for overall activation direction
-    color = "green" if q_activation >= 0 else "red"
+    color = "green" if activation >= 0 else "red"
     activation_text = (
-        f"Overall: {'Positive' if q_activation >= 0 else 'Negative'} Activation"
+        f"Overall: {'Positive' if activation >= 0 else 'Negative'} Activation"
     )
     draw.text((10, wordcloud_height + 80), activation_text, fill=color, font=font_small)
 
     # Save
-    output_path = os.path.join(output_dir, f"q_dim_{q_dim:02d}_{word}.png")
+    output_path = os.path.join(
+        output_dir, f"{matrix_name.lower()}_dim_{dim:02d}_{word}.png"
+    )
     final_img.save(output_path, "PNG")
 
-    print(f"Saved Q dimension {q_dim} wordcloud: {output_path}")
-    print(f"=== END DEBUG Q Dimension {q_dim} ===\n")
+    print(f"Saved {matrix_name} dimension {dim} wordcloud: {output_path}")
+    print(f"=== END DEBUG {matrix_name} Dimension {dim} ===\n")
     return output_path
 
 
-def create_overview_grid(output_paths, word, n_embd, output_dir):
-    """Create a grid overview of all Q dimension wordclouds."""
+def create_overview_grid(output_paths, word, n_embd, output_dir, matrix_name):
+    """Create a grid overview of all dimension wordclouds."""
 
     if not output_paths:
         return None
@@ -354,7 +345,7 @@ def create_overview_grid(output_paths, word, n_embd, output_dir):
     except:
         title_font = ImageFont.load_default()
 
-    title = f"Q Decomposition Overview - Word: {word}"
+    title = f"{matrix_name} Decomposition Overview - Word: {word}"
     title_bbox = draw.textbbox((0, 0), title, font=title_font)
     title_width = title_bbox[2] - title_bbox[0]
     title_x = (canvas_width - title_width) // 2
@@ -384,7 +375,9 @@ def create_overview_grid(output_paths, word, n_embd, output_dir):
         draw.text((label_x, label_y), dim_label, fill="white", font=title_font)
 
     # Save overview
-    overview_path = os.path.join(output_dir, f"q_decomposition_overview_{word}.png")
+    overview_path = os.path.join(
+        output_dir, f"{matrix_name.lower()}_decomposition_overview_{word}.png"
+    )
     canvas.save(overview_path, "PNG")
 
     print(f"Saved overview: {overview_path}")
@@ -413,10 +406,10 @@ def main():
         print("Failed to load tokenizer")
         sys.exit(1)
 
-    # Load Q matrix
-    W_q = load_q_matrix(model_state, model_args, layer_idx=0)
+    # Load Q, K, V matrices
+    W_q, W_k, W_v = load_qkv_matrices(model_state, model_args, layer_idx=0)
     if W_q is None:
-        print("Failed to load Q matrix")
+        print("Failed to load Q/K/V matrices")
         sys.exit(1)
 
     # Get word representation (token + positional)
@@ -426,56 +419,66 @@ def main():
     if word_repr is None:
         sys.exit(1)
 
-    # Compute Q activations
-    q_activations = compute_q_activations(word_repr, W_q)
-
-    # Create output directory
+    # Create master output directory
     model_dir = os.path.basename(os.path.dirname(checkpoint_path))
-    output_dir = os.path.join(
-        "visualizations", model_dir, f"q_decomposition_{target_word}"
+    output_dir_base = os.path.join(
+        "visualizations", model_dir, f"qkv_decomposition_{target_word}"
     )
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(output_dir_base, exist_ok=True)
 
-    print(f"\nGenerating Q decomposition visualizations...")
-    print(f"Output directory: {output_dir}")
+    print(f"\nGenerating Q/K/V decomposition visualizations...")
+    print(f"Output directory: {output_dir_base}")
 
-    # Generate wordcloud for each Q dimension
-    n_embd = model_args["n_embd"]
-    output_paths = []
+    all_overviews = {}
 
-    for q_dim in range(n_embd):
-        print(f"\nProcessing Q dimension {q_dim}/{n_embd-1}")
+    matrices = {"Q": W_q, "K": W_k, "V": W_v}
 
-        # Compute vocabulary contributions for this Q dimension
-        vocab_contributions = compute_vocab_contributions_for_q_dim(
-            token_embeddings, W_q, q_dim, itos
+    for matrix_name, W_matrix in matrices.items():
+        print(f"\n{'='*20} PROCESSING {matrix_name} MATRIX {'='*20}")
+
+        # Compute activations for this transformation
+        activations = compute_transformed_activations(word_repr, W_matrix)
+
+        # Create subdirectory for this matrix type
+        output_dir = os.path.join(output_dir_base, matrix_name.lower())
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Generate wordcloud for each dimension
+        n_embd = model_args["n_embd"]
+        output_paths = []
+
+        for dim in range(n_embd):
+            print(f"\nProcessing {matrix_name} dimension {dim}/{n_embd-1}")
+
+            # Compute vocabulary contributions for this dimension
+            vocab_contributions = compute_vocab_contributions_for_dim(
+                token_embeddings, W_matrix, dim, itos
+            )
+
+            # Create wordcloud with opacity based on activation
+            output_path = create_dimension_wordcloud(
+                vocab_contributions,
+                activations[dim],
+                dim,
+                output_dir,
+                target_word,
+                matrix_name,
+            )
+
+            if output_path:
+                output_paths.append(output_path)
+
+        # Create overview grid for this matrix
+        overview_path = create_overview_grid(
+            output_paths, target_word, n_embd, output_dir, matrix_name
         )
+        if overview_path:
+            all_overviews[matrix_name] = os.path.relpath(overview_path, output_dir_base)
 
-        # Create wordcloud with opacity based on activation
-        output_path = create_q_dimension_wordcloud(
-            vocab_contributions, q_activations[q_dim], q_dim, output_dir, target_word
-        )
-
-        if output_path:
-            output_paths.append(output_path)
-
-    # Create overview grid
-    overview_path = create_overview_grid(output_paths, target_word, n_embd, output_dir)
-
-    print(f"\nDone! Q decomposition visualization saved to: {output_dir}/")
+    print(f"\nDone! Q/K/V decomposition visualizations saved to: {output_dir_base}/")
     print(f"Key outputs:")
-    print(f"  - Individual Q dimensions: q_dim_*.png")
-    print(f"  - Overview grid: {overview_path}")
-
-    print(f"\n📊 Summary:")
-    print(f"  - Analyzed word '{target_word}' at position {position}")
-    print(f"  - Generated {len(output_paths)} Q dimension wordclouds")
-    print(
-        f"  - Q activation range: [{q_activations.min():.3f}, {q_activations.max():.3f}]"
-    )
-    print(
-        f"  - Strongest Q activation: dimension {np.argmax(np.abs(q_activations))} = {q_activations[np.argmax(np.abs(q_activations))]:.3f}"
-    )
+    for matrix_name, overview_path in all_overviews.items():
+        print(f"  - {matrix_name} overview grid: {overview_path}")
 
 
 if __name__ == "__main__":
