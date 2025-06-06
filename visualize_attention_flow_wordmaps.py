@@ -50,6 +50,23 @@ def tokenize_sentence(sentence, stoi):
 # --- Representation and Transformation Calculation ---
 
 
+def gelu(x):
+    """GELU activation function."""
+    return (
+        0.5
+        * x
+        * (1.0 + np.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * np.power(x, 3.0))))
+    )
+
+
+def layernorm(x, gamma, beta, eps=1e-5):
+    """Layer normalization."""
+    mean = x.mean(axis=-1, keepdims=True)
+    var = x.var(axis=-1, keepdims=True)
+    x_normalized = (x - mean) / np.sqrt(var + eps)
+    return gamma * x_normalized + beta
+
+
 def get_representations(token_ids, wte, wpe):
     """Gets combined token + positional embeddings."""
     combined_reprs = []
@@ -60,42 +77,130 @@ def get_representations(token_ids, wte, wpe):
     return np.array(combined_reprs)
 
 
-def get_qkv_matrices(model_state, model_args, layer_idx=0):
-    """Extracts Q, K, V weight matrices from the model state."""
+def get_block_weights(model_state, model_args, layer_idx=0):
+    """Extracts all weights for a given transformer block."""
     n_embd = model_args["n_embd"]
-    key = f"transformer.h.{layer_idx}.attn.c_attn.weight"
-    if key not in model_state:
-        return None, None, None
 
-    c_attn_weight = model_state[key]
-    if c_attn_weight.shape[0] == 3 * n_embd:
-        c_attn_weight = c_attn_weight.T
+    def get_param(key, is_bias=False):
+        param = model_state.get(key)
+        if param is None and is_bias:
+            print(f"Info: Bias key '{key}' not found, assuming zero bias.")
+            # Determine correct shape for the bias vector
+            if "attn.c_attn.bias" in key:
+                shape = 3 * n_embd
+            elif "mlp.c_fc.bias" in key:
+                shape = 4 * n_embd
+            else:  # All other biases have n_embd size
+                shape = n_embd
+            return torch.zeros(shape)
+        return param
 
-    W_q = c_attn_weight[:, :n_embd].numpy()
-    W_k = c_attn_weight[:, n_embd : 2 * n_embd].numpy()
-    W_v = c_attn_weight[:, 2 * n_embd :].numpy()
-    return W_q, W_k, W_v
+    param_defs = {
+        "ln1_g": (f"transformer.h.{layer_idx}.ln_1.weight", False),
+        "ln1_b": (f"transformer.h.{layer_idx}.ln_1.bias", True),
+        "c_attn_w": (f"transformer.h.{layer_idx}.attn.c_attn.weight", False),
+        "c_attn_b": (f"transformer.h.{layer_idx}.attn.c_attn.bias", True),
+        "c_proj_w": (f"transformer.h.{layer_idx}.attn.c_proj.weight", False),
+        "c_proj_b": (f"transformer.h.{layer_idx}.attn.c_proj.bias", True),
+        "ln2_g": (f"transformer.h.{layer_idx}.ln_2.weight", False),
+        "ln2_b": (f"transformer.h.{layer_idx}.ln_2.bias", True),
+        "mlp_fc_w": (f"transformer.h.{layer_idx}.mlp.c_fc.weight", False),
+        "mlp_fc_b": (f"transformer.h.{layer_idx}.mlp.c_fc.bias", True),
+        "mlp_proj_w": (f"transformer.h.{layer_idx}.mlp.c_proj.weight", False),
+        "mlp_proj_b": (f"transformer.h.{layer_idx}.mlp.c_proj.bias", True),
+    }
+
+    weights = {
+        name: get_param(key, is_bias) for name, (key, is_bias) in param_defs.items()
+    }
+
+    # Check for missing *weights*; biases are now handled.
+    missing_weights = [
+        param_defs[name][0]
+        for name, param in weights.items()
+        if param is None and not name.endswith("_b")
+    ]
+
+    if missing_weights:
+        print(f"Error: Could not find all *weight* tensors for layer {layer_idx}.")
+        print("The following weight keys were not found in the checkpoint:")
+        for key in missing_weights:
+            print(f"  - {key}")
+        return None
+
+    # Convert all tensors to numpy, transposing Linear layers' weights for matmul
+    for k, v in weights.items():
+        if isinstance(v, torch.Tensor):
+            if k.endswith("_w"):  # Transpose weight matrices for (in, out) format
+                weights[k] = v.T.numpy()
+            else:
+                weights[k] = v.numpy()
+
+    # Split QKV weights and biases from the combined attention matrix/vector
+    W_qkv = weights["c_attn_w"]
+    b_qkv = weights["c_attn_b"]
+    weights["W_q"] = W_qkv[:, :n_embd]
+    weights["W_k"] = W_qkv[:, n_embd : 2 * n_embd]
+    weights["W_v"] = W_qkv[:, 2 * n_embd :]
+    weights["b_q"], weights["b_k"], weights["b_v"] = np.split(b_qkv, 3)
+
+    return weights
 
 
-def calculate_attention_flow(x, W_q, W_k, W_v, n_head=1, d_k=None):
-    """Calculates all intermediate representations in the attention flow."""
-    if d_k is None:
-        d_k = x.shape[1] // n_head
+def calculate_transformer_block_flow(x, weights, n_head):
+    """Calculates all intermediate representations in a full transformer block."""
+    n_embd = x.shape[1]
+    d_k = n_embd // n_head
 
-    # 1. Transform to Q, K, V spaces
-    q = x @ W_q
-    k = x @ W_k
-    v = x @ W_v
+    # --- 1. Attention Sub-layer ---
+    # a. LayerNorm
+    x_ln1 = layernorm(x, weights["ln1_g"], weights["ln1_b"])
 
-    # 2. Calculate attention scores and weights
+    # b. Q, K, V calculation
+    q = x_ln1 @ weights["W_q"] + weights["b_q"]
+    k = x_ln1 @ weights["W_k"] + weights["b_k"]
+    v = x_ln1 @ weights["W_v"] + weights["b_v"]
+
+    # c. Attention scores and weights (simplified single-head style)
     scores = (q @ k.T) / np.sqrt(d_k)
     e_scores = np.exp(scores - np.max(scores, axis=-1, keepdims=True))
-    weights = e_scores / e_scores.sum(axis=-1, keepdims=True)
+    attn_weights = e_scores / e_scores.sum(axis=-1, keepdims=True)
 
-    # 3. Calculate final output vectors
-    z = weights @ v
+    # d. Weighted sum of values
+    z = attn_weights @ v
 
-    return q, k, v, weights, z
+    # e. Projection
+    attn_proj = z @ weights["c_proj_w"] + weights["c_proj_b"]
+
+    # f. First residual connection
+    x_after_attn = x + attn_proj
+
+    # --- 2. MLP Sub-layer ---
+    # a. LayerNorm
+    x_ln2 = layernorm(x_after_attn, weights["ln2_g"], weights["ln2_b"])
+
+    # b. Feed-forward network
+    mlp_fc = x_ln2 @ weights["mlp_fc_w"] + weights["mlp_fc_b"]
+    mlp_gelu = gelu(mlp_fc)
+    mlp_out = mlp_gelu @ weights["mlp_proj_w"] + weights["mlp_proj_b"]
+
+    # c. Second residual connection
+    x_final = x_after_attn + mlp_out
+
+    # Return dict of all n_embd-sized vectors for visualization
+    return {
+        "Input (x)": x,
+        "After LN1": x_ln1,
+        "Query (q)": q,
+        "Key (k)": k,
+        "Value (v)": v,
+        "Attn Out (z)": z,
+        "Attn Proj": attn_proj,
+        "After Resid1": x_after_attn,
+        "After LN2": x_ln2,
+        "MLP Out": mlp_out,
+        "Block Output": x_final,
+    }, attn_weights
 
 
 # --- Word Cloud and Grid Generation ---
@@ -222,20 +327,15 @@ def main():
     # Prepare inputs
     words, token_ids = tokenize_sentence(probe_sentence, stoi)
     x = get_representations(token_ids, wte, wpe)  # Initial combined representations
-    W_q, W_k, W_v = get_qkv_matrices(model_state, model_args, layer_idx)
+    weights = get_block_weights(model_state, model_args, layer_idx)
 
-    if W_q is None:
-        print("Failed to get QKV matrices.")
+    if weights is None:
+        print("Failed to get transformer block weights.")
         sys.exit(1)
 
     # Calculate all attention steps
-    q, k, v, weights, z = calculate_attention_flow(
-        x,
-        W_q,
-        W_k,
-        W_v,
-        model_args.get("n_head", 1),
-        model_args.get("n_embd") // model_args.get("n_head", 1),
+    representations, attention_weights = calculate_transformer_block_flow(
+        x, weights, model_args.get("n_head", 1)
     )
 
     # --- Create Visualizations ---
@@ -252,19 +352,13 @@ def main():
         sys.exit(1)
 
     # Collect all activation values to create a consistent opacity scale
-    all_values_for_scaling = np.concatenate([x, q, k, v, z])
+    all_values_for_scaling = np.concatenate(list(representations.values()))
 
     # Generate grid images for each step and each word
     image_paths = {}
     for i, word in enumerate(words):
-        steps = {
-            "Input (x)": x[i],
-            "Query (q)": q[i],
-            "Key (k)": k[i],
-            "Value (v)": v[i],
-            "Output (z)": z[i],
-        }
-        for step_name, vector in steps.items():
+        for step_name, all_word_vectors in representations.items():
+            vector = all_word_vectors[i]
             grid_img = create_grid_for_vector(
                 vector,
                 model_args["n_embd"],
@@ -272,33 +366,43 @@ def main():
                 wordmap_size,
                 all_values_for_scaling,
             )
-            filename = f"{word}_{i}_{step_name.replace(' ', '_')}.png"
+            filename = f"{word}_{i}_{step_name.replace(' ', '_').replace('(', '').replace(')', '')}.png"
             path = os.path.join(output_dir, filename)
             grid_img.save(path)
             image_paths[(word, i, step_name)] = filename
 
     # Generate HTML page to display everything in a grid
     generate_html_page(
-        output_dir, model_dir, probe_sentence, words, image_paths, weights
+        output_dir,
+        model_dir,
+        probe_sentence,
+        words,
+        image_paths,
+        attention_weights,
+        list(representations.keys()),
     )
 
-    print("\nDone! Wordmap grids for each step of the attention flow created.")
+    print("\nDone! Wordmap grids for each step of the transformer block created.")
     print(f"View the interactive summary at: {output_dir}/index.html")
 
 
 def generate_html_page(
-    output_dir, model_name, probe_sentence, words, image_paths, attention_weights
+    output_dir,
+    model_name,
+    probe_sentence,
+    words,
+    image_paths,
+    attention_weights,
+    header_cols,
 ):
     """Generates an HTML page to display the attention flow grid."""
 
-    header_cols = [
-        "Input (x)",
-        "Query (q)",
-        "Key (k)",
-        "Value (v)",
-        "Attention",
-        "Output (z)",
-    ]
+    # Add the 'Attention' column in the correct place
+    if "Attn Out (z)" in header_cols:
+        pos = header_cols.index("Attn Out (z)") + 1
+        header_cols.insert(pos, "Attention")
+    else:
+        header_cols.append("Attention")
 
     # Generate the rows for the main grid
     rows_html = ""
@@ -308,28 +412,26 @@ def generate_html_page(
             f"<td class='word-label'>'{word}' <span class='pos'>(pos {i})</span></td>"
         )
 
-        # Wordmap columns
-        for step_name in ["Input (x)", "Query (q)", "Key (k)", "Value (v)"]:
-            img_path = image_paths.get((word, i, step_name), "")
-            rows_html += f"<td><img src='{img_path}' loading='lazy'></td>"
+        # Wordmap and attention columns
+        for step_name in header_cols:
+            if step_name == "Attention":
+                # Attention column
+                attention_viz_html = "<div class='attention-bar-container'>"
+                for j, target_word in enumerate(words):
+                    weight = attention_weights[i, j]
+                    attention_viz_html += f"""
+                        <div class="bar-row">
+                            <span class="bar-label">{target_word}</span>
+                            <div class="bar" style="width: {weight*100*2}px; background-color: rgba(75, 192, 192, {weight*5});"></div>
+                            <span class="bar-value">{weight:.3f}</span>
+                        </div>
+                    """
+                attention_viz_html += "</div>"
+                rows_html += f"<td class='attention-cell'>{attention_viz_html}</td>"
+            else:
+                img_path = image_paths.get((word, i, step_name), "")
+                rows_html += f"<td><img src='{img_path}' title='{step_name}' loading='lazy'></td>"
 
-        # Attention column
-        attention_viz_html = "<div class='attention-bar-container'>"
-        for j, target_word in enumerate(words):
-            weight = attention_weights[i, j]
-            attention_viz_html += f"""
-                <div class="bar-row">
-                    <span class="bar-label">{target_word}</span>
-                    <div class="bar" style="width: {weight*100*2}px; background-color: rgba(75, 192, 192, {weight*5});"></div>
-                    <span class="bar-value">{weight:.3f}</span>
-                </div>
-            """
-        attention_viz_html += "</div>"
-        rows_html += f"<td class='attention-cell'>{attention_viz_html}</td>"
-
-        # Output wordmap column
-        img_path = image_paths.get((word, i, "Output (z)"), "")
-        rows_html += f"<td><img src='{img_path}' loading='lazy'></td>"
         rows_html += "</tr>"
 
     html_content = f"""
@@ -337,7 +439,7 @@ def generate_html_page(
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>Attention Flow - {model_name}</title>
+        <title>Transformer Block Flow Visualization</title>
         <style>
             body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; margin: 2em; background: #f0f2f5; color: #333; }}
             .container {{ max-width: 95%; margin: auto; background: white; padding: 2em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }}
@@ -358,9 +460,9 @@ def generate_html_page(
     </head>
     <body>
         <div class="container">
-            <h1>Attention Flow Wordmap Visualization</h1>
+            <h1>Transformer Block Flow Visualization</h1>
             <p><strong>Model:</strong> {model_name}<br><strong>Probe Sentence:</strong> "{probe_sentence}"</p>
-            <h2>Each row shows a word's journey through the first attention layer.</h2>
+            <h2>Each row shows a word's journey through the first transformer block.</h2>
             <table>
                 <thead>
                     <tr>
