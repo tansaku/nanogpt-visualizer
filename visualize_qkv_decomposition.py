@@ -147,7 +147,7 @@ def compute_vocab_contributions_for_dim(token_embeddings, W_matrix, dim, itos):
 
 
 def create_dimension_wordcloud(
-    vocab_contributions, activation, dim, output_dir, word, matrix_name
+    vocab_contributions, activation, dim, output_dir, word, matrix_name, stoi
 ):
     """Create a wordcloud for a dimension showing vocabulary contributions."""
 
@@ -206,7 +206,26 @@ def create_dimension_wordcloud(
             output_dir, f"{matrix_name.lower()}_dim_{dim:02d}_{word}.png"
         )
         placeholder_img.save(output_path, "PNG")
-        return output_path
+        return output_path, None
+
+    # This part is new - preparing data for the modal
+    dimension_data = {"positive": [], "negative": []}
+
+    # Sort contributions for display
+    sorted_filtered_contribs = sorted(
+        filtered_contributions.items(), key=lambda item: item[1]
+    )
+
+    for word_str, contrib_val in sorted_filtered_contribs:
+        idx = stoi.get(word_str, -1)
+        if contrib_val >= 0:
+            dimension_data["positive"].insert(
+                0, {"word": word_str, "value": contrib_val, "index": idx}
+            )
+        else:
+            dimension_data["negative"].append(
+                {"word": word_str, "value": contrib_val, "index": idx}
+            )
 
     # Combine all contributions into a single dictionary for word cloud generation
     word_frequencies = {
@@ -306,82 +325,7 @@ def create_dimension_wordcloud(
 
     print(f"Saved {matrix_name} dimension {dim} wordcloud: {output_path}")
     print(f"=== END DEBUG {matrix_name} Dimension {dim} ===\n")
-    return output_path
-
-
-def create_overview_grid(output_paths, word, n_embd, output_dir, matrix_name):
-    """Create a grid overview of all dimension wordclouds."""
-
-    if not output_paths:
-        return None
-
-    # Calculate grid dimensions
-    grid_cols = int(np.ceil(np.sqrt(n_embd)))
-    grid_rows = int(np.ceil(n_embd / grid_cols))
-
-    # Load first image to get size
-    first_img = Image.open(output_paths[0])
-    img_width, img_height = first_img.size
-
-    # Scale down for overview
-    scale_factor = 0.3
-    thumb_width = int(img_width * scale_factor)
-    thumb_height = int(img_height * scale_factor)
-
-    # Calculate canvas size
-    spacing = 10
-    canvas_width = grid_cols * thumb_width + (grid_cols - 1) * spacing + 2 * spacing
-    canvas_height = (
-        grid_rows * thumb_height + (grid_rows - 1) * spacing + 2 * spacing + 60
-    )
-
-    # Create canvas
-    canvas = Image.new("RGB", (canvas_width, canvas_height), "white")
-
-    # Add title
-    draw = ImageDraw.Draw(canvas)
-    try:
-        title_font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 24)
-    except:
-        title_font = ImageFont.load_default()
-
-    title = f"{matrix_name} Decomposition Overview - Word: {word}"
-    title_bbox = draw.textbbox((0, 0), title, font=title_font)
-    title_width = title_bbox[2] - title_bbox[0]
-    title_x = (canvas_width - title_width) // 2
-    draw.text((title_x, 10), title, fill="black", font=title_font)
-
-    # Place thumbnails
-    for i, path in enumerate(output_paths):
-        if i >= n_embd:
-            break
-
-        row = i // grid_cols
-        col = i % grid_cols
-
-        x = spacing + col * (thumb_width + spacing)
-        y = 60 + row * (thumb_height + spacing)
-
-        # Load and resize image
-        img = Image.open(path)
-        thumb = img.resize((thumb_width, thumb_height), Image.Resampling.LANCZOS)
-
-        canvas.paste(thumb, (x, y))
-
-        # Add dimension label
-        dim_label = f"D{i}"
-        label_x = x + thumb_width // 2 - 10
-        label_y = y + thumb_height - 20
-        draw.text((label_x, label_y), dim_label, fill="white", font=title_font)
-
-    # Save overview
-    overview_path = os.path.join(
-        output_dir, f"{matrix_name.lower()}_decomposition_overview_{word}.png"
-    )
-    canvas.save(overview_path, "PNG")
-
-    print(f"Saved overview: {overview_path}")
-    return overview_path
+    return output_path, dimension_data
 
 
 def main():
@@ -429,8 +373,7 @@ def main():
     print(f"\nGenerating Q/K/V decomposition visualizations...")
     print(f"Output directory: {output_dir_base}")
 
-    all_overviews = {}
-
+    all_dimension_data = {"Q": {}, "K": {}, "V": {}}
     matrices = {"Q": W_q, "K": W_k, "V": W_v}
 
     for matrix_name, W_matrix in matrices.items():
@@ -445,7 +388,6 @@ def main():
 
         # Generate wordcloud for each dimension
         n_embd = model_args["n_embd"]
-        output_paths = []
 
         for dim in range(n_embd):
             print(f"\nProcessing {matrix_name} dimension {dim}/{n_embd-1}")
@@ -456,29 +398,199 @@ def main():
             )
 
             # Create wordcloud with opacity based on activation
-            output_path = create_dimension_wordcloud(
+            _, dim_data = create_dimension_wordcloud(
                 vocab_contributions,
                 activations[dim],
                 dim,
                 output_dir,
                 target_word,
                 matrix_name,
+                stoi,
             )
 
-            if output_path:
-                output_paths.append(output_path)
+            if dim_data:
+                all_dimension_data[matrix_name][dim] = dim_data
 
-        # Create overview grid for this matrix
-        overview_path = create_overview_grid(
-            output_paths, target_word, n_embd, output_dir, matrix_name
-        )
-        if overview_path:
-            all_overviews[matrix_name] = os.path.relpath(overview_path, output_dir_base)
+    # Generate the HTML page to tie it all together
+    generate_html_page(
+        output_dir_base,
+        model_dir,
+        target_word,
+        position,
+        model_args,
+        all_dimension_data,
+    )
 
     print(f"\nDone! Q/K/V decomposition visualizations saved to: {output_dir_base}/")
-    print(f"Key outputs:")
-    for matrix_name, overview_path in all_overviews.items():
-        print(f"  - {matrix_name} overview grid: {overview_path}")
+    print(f"View the interactive summary at: {output_dir_base}/index.html")
+
+
+def generate_html_page(
+    output_dir, model_name, target_word, position, model_args, all_dimension_data
+):
+    """Generate an interactive HTML page for viewing all Q/K/V decompositions."""
+    import json
+
+    dimension_data_json = json.dumps(all_dimension_data)
+    n_embd = model_args["n_embd"]
+
+    def generate_grid_html(matrix):
+        # Generate the HTML for a single grid of dimension cards
+        cards_html = []
+        for dim in range(n_embd):
+            card = f"""
+                <div class="dimension-card" onclick="openModal('{matrix}', {dim})">
+                    <img src="{matrix.lower()}/{matrix.lower()}_dim_{dim:02d}_{target_word}.png" alt="{matrix} Dimension {dim}">
+                    <div class="info"><h3>Dimension {dim}</h3></div>
+                </div>
+            """
+            cards_html.append(card)
+        return "".join(cards_html)
+
+    tabs_html = []
+    for matrix in ["Q", "K", "V"]:
+        grid_content = generate_grid_html(matrix)
+        tab = f"""
+            <div id="{matrix}" class="tab-content {'active' if matrix == 'Q' else ''}">
+                <h2>{matrix} Decomposition</h2>
+                <div class="grid">
+                    {grid_content}
+                </div>
+            </div>
+        """
+        tabs_html.append(tab)
+
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Q/K/V Decomposition - {model_name}</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 1800px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }}
+        .header {{ background: linear-gradient(135deg, #4e54c8 0%, #8f94fb 100%); color: white; padding: 30px; text-align: center; }}
+        .header h1, .header p {{ margin: 0; }}
+        .content {{ padding: 30px; }}
+        .tabs {{ display: flex; border-bottom: 2px solid #ddd; margin-bottom: 20px; }}
+        .tab-btn {{ padding: 15px 25px; cursor: pointer; background: #f1f1f1; border: none; outline: none; transition: background 0.3s; font-size: 16px; font-weight: bold; }}
+        .tab-btn.active {{ background: #fff; border-bottom: 2px solid #4e54c8; }}
+        .tab-content {{ display: none; }}
+        .tab-content.active {{ display: block; }}
+        .grid {{ display: grid; grid-template-columns: repeat(6, 1fr); gap: 20px; }}
+        .dimension-card {{ border: 1px solid #ddd; border-radius: 8px; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; cursor: pointer; }}
+        .dimension-card:hover {{ transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,0,0,0.1); }}
+        .dimension-card img {{ width: 100%; height: 150px; object-fit: cover; }}
+        .dimension-card .info {{ padding: 15px; text-align: center; }}
+        .dimension-card .info h3 {{ margin: 0 0 5px 0; color: #333; }}
+        .modal {{ display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; }}
+        .modal-content {{ background: white; border-radius: 8px; max-width: 90%; max-height: 90%; overflow: auto; position: relative; }}
+        .modal .close {{ position: absolute; top: 10px; right: 20px; color: #666; font-size: 30px; cursor: pointer; z-index: 1001; }}
+        .modal-body {{ padding: 20px; display: flex; gap: 20px; flex-wrap: wrap; }}
+        .modal-image {{ flex: 1; min-width: 300px; }}
+        .modal-image img {{ width: 100%; border-radius: 4px; }}
+        .modal-data {{ flex: 1; min-width: 300px; }}
+        .data-table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
+        .data-table th {{ background: #4e54c8; color: white; padding: 10px; text-align: left; }}
+        .data-table td {{ padding: 8px 10px; border-bottom: 1px solid #eee; }}
+        .data-table .positive {{ color: #000; }}
+        .data-table .negative {{ color: #CC0000; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Q/K/V Decomposition</h1>
+            <p>Model: {model_name} | Word: '{target_word}' (at position {position})</p>
+        </div>
+        <div class="content">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="openTab(event, 'Q')">Query (Q)</button>
+                <button class="tab-btn" onclick="openTab(event, 'K')">Key (K)</button>
+                <button class="tab-btn" onclick="openTab(event, 'V')">Value (V)</button>
+            </div>
+            {''.join(tabs_html)}
+        </div>
+    </div>
+
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <span class="close" onclick="document.getElementById('modal').style.display='none'">&times;</span>
+            <div class="modal-body">
+                <div class="modal-image">
+                    <img id="modal-img" src="">
+                </div>
+                <div class="modal-data">
+                    <h3 id="modal-title"></h3>
+                    <h4>Highest Positive Values</h4>
+                    <table class="data-table"><tbody id="positive-tbody"></tbody></table>
+                    <h4>Most Negative Values</h4>
+                    <table class="data-table"><tbody id="negative-tbody"></tbody></table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dimensionData = {dimension_data_json};
+        const target_word = "{target_word}";
+
+        function openTab(evt, matrixName) {{
+            let i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) {{
+                tabcontent[i].style.display = "none";
+            }}
+            tablinks = document.getElementsByClassName("tab-btn");
+            for (i = 0; i < tablinks.length; i++) {{
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }}
+            document.getElementById(matrixName).style.display = "block";
+            evt.currentTarget.className += " active";
+        }}
+        // Make the first tab active on page load
+        if (document.getElementsByClassName("tab-btn")[0]) {{
+            document.getElementsByClassName("tab-btn")[0].click();
+        }}
+
+        function openModal(matrix, dimension) {{
+            const data = dimensionData[matrix] && dimensionData[matrix][dimension];
+            if (!data) {{
+                console.error(`No data found for ${{matrix}} dimension ${{dimension}}`);
+                return;
+            }}
+
+            document.getElementById('modal-img').src = `${{matrix.toLowerCase()}}/${{matrix.toLowerCase()}}_dim_${{String(dimension).padStart(2, '0')}}_${{target_word}}.png`;
+            document.getElementById('modal-title').textContent = `${{matrix}} Dimension ${{dimension}}`;
+
+            const posTbody = document.getElementById('positive-tbody');
+            const negTbody = document.getElementById('negative-tbody');
+            posTbody.innerHTML = '<tr><th>Word</th><th>Value</th><th>Index</th></tr>';
+            negTbody.innerHTML = '<tr><th>Word</th><th>Value</th><th>Index</th></tr>';
+
+            if (data.positive) {{
+                data.positive.forEach(item => {{
+                    const row = posTbody.insertRow();
+                    row.innerHTML = `<td class="positive">${{item.word}}</td><td class="positive">${{item.value.toFixed(4)}}</td><td class="positive">${{item.index}}</td>`;
+                }});
+            }}
+            if (data.negative) {{
+                data.negative.forEach(item => {{
+                    const row = negTbody.insertRow();
+                    row.innerHTML = `<td class="negative">${{item.word}}</td><td class="negative">${{item.value.toFixed(4)}}</td><td class="negative">${{item.index}}</td>`;
+                }});
+            }}
+
+            document.getElementById('modal').style.display = 'flex';
+        }}
+    </script>
+</body>
+</html>
+"""
+    html_path = os.path.join(output_dir, "index.html")
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    print(f"Generated HTML page: {html_path}")
 
 
 if __name__ == "__main__":
