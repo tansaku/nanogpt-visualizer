@@ -154,7 +154,7 @@ def create_sentence_flow_visualization(
             )
         else:
             print("Please run visualize_tokens.py first to generate embedding wordmaps")
-        return None
+        return None, None, None
 
     # Load wordmap images
     wordmap_images = {}
@@ -171,7 +171,7 @@ def create_sentence_flow_visualization(
 
     if not wordmap_images:
         print("Error: No wordmap images found!")
-        return None
+        return None, None, None
 
     print(f"Wordmap size: {wordmap_size}")
 
@@ -202,6 +202,11 @@ def create_sentence_flow_visualization(
     word_block_height = grid_rows * small_wordmap_height
     word_separator_height = 20  # Small gap between word blocks
     border_thickness = 2
+
+    print(f"Actual calculated dimensions:")
+    print(f"  small_wordmap_height: {small_wordmap_height}px")
+    print(f"  word_block_height: {word_block_height}px")
+    print(f"  word_separator_height: {word_separator_height}px")
 
     canvas_width = grid_cols * small_wordmap_width + border_thickness * 2
     canvas_height = (
@@ -283,17 +288,38 @@ def create_sentence_flow_visualization(
     canvas.save(output_path, "PNG")
 
     print(f"Saved {representation_type} sentence flow visualization: {output_path}")
-    return output_path, word_embeddings
+
+    # Return layout information for HTML generation
+    layout_info = {
+        "word_block_height": word_block_height,
+        "word_separator_height": word_separator_height,
+        "grid_rows": grid_rows,
+        "grid_cols": grid_cols,
+    }
+
+    return output_path, word_embeddings, layout_info
 
 
 def generate_html_page(
-    output_dir, model_name, probe_sentence, words, n_embd, all_word_embeddings=None
+    output_dir,
+    model_name,
+    probe_sentence,
+    words,
+    n_embd,
+    layout_info,
+    all_word_embeddings=None,
 ):
     """Generate HTML page with tabs for different representation types."""
 
-    # Calculate grid dimensions for display
-    grid_cols = int(np.ceil(np.sqrt(n_embd)))
-    grid_rows = int(np.ceil(n_embd / grid_cols))
+    # Use actual calculated dimensions from image generation
+    grid_cols = layout_info["grid_cols"]
+    grid_rows = layout_info["grid_rows"]
+    word_block_height = layout_info["word_block_height"]
+    word_separator_height = layout_info["word_separator_height"]
+
+    print(f"HTML using actual layout dimensions:")
+    print(f"  word_block_height: {word_block_height}px")
+    print(f"  word_separator_height: {word_separator_height}px")
 
     # Create word labels HTML for display alongside images
     words_html = ""
@@ -484,9 +510,10 @@ def generate_html_page(
             border-radius: 8px;
             border: 2px solid #dee2e6;
             text-align: center;
-            /* Calculate height to match image rows */
-            height: calc(({grid_rows} * 60px) - 4px); /* 60px per small wordmap, minus border adjustment */
-            margin-bottom: 20px; /* Match word_separator_height from image generation */
+            box-sizing: border-box;
+            /* Use actual calculated height from image generation */
+            height: {word_block_height}px; /* Exact match with word_block_height in image generation */
+            margin-bottom: {word_separator_height}px; /* Match word_separator_height from image generation */
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -496,7 +523,7 @@ def generate_html_page(
         }}
         .word-text {{
             display: block;
-            font-size: 24px;
+            font-size: 32px;
             font-weight: bold;
             color: #333;
             margin-bottom: 5px;
@@ -823,28 +850,37 @@ def main():
 
     # Generate visualization
     all_word_embeddings = {}
+    layout_info = None  # Will be set from the first successful visualization
+
     for representation_type in ["embeddings", "positional", "combined"]:
-        visualization_path, word_embeddings = create_sentence_flow_visualization(
-            representation_handler,
-            words,
-            token_ids,
-            itos,
-            output_dir,
-            probe_sentence,
-            model_dir,
-            representation_type,
+        visualization_path, word_embeddings, curr_layout_info = (
+            create_sentence_flow_visualization(
+                representation_handler,
+                words,
+                token_ids,
+                itos,
+                output_dir,
+                probe_sentence,
+                model_dir,
+                representation_type,
+            )
         )
-        all_word_embeddings[representation_type] = word_embeddings
+        if curr_layout_info:
+            all_word_embeddings[representation_type] = word_embeddings
+            if layout_info is None:
+                layout_info = curr_layout_info  # Save layout info from first successful generation
 
     # Generate HTML page with all representations
-    generate_html_page(
-        output_dir,
-        model_dir,
-        probe_sentence,
-        words,
-        embeddings.shape[1],
-        all_word_embeddings,
-    )
+    if layout_info:
+        generate_html_page(
+            output_dir,
+            model_dir,
+            probe_sentence,
+            words,
+            embeddings.shape[1],
+            layout_info,
+            all_word_embeddings,
+        )
 
     print(f"\nDone! Sentence flow visualization saved to: {output_dir}/")
     print(f"View at: {output_dir}/index.html")
