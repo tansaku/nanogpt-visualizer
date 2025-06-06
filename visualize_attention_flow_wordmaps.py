@@ -143,7 +143,12 @@ def create_grid_for_vector(
     canvas_h = grid_rows * thumb_h
     canvas = Image.new("RGB", (canvas_w, canvas_h), "white")
 
-    max_abs_val = np.max(np.abs(all_values_for_opacity_scaling))
+    # Use percentile-based mapping for better contrast, same as in sentence_flow
+    all_abs_values = np.abs(all_values_for_opacity_scaling.flatten())
+    min_val, max_val = (
+        all_values_for_opacity_scaling.min(),
+        all_values_for_opacity_scaling.max(),
+    )
 
     for dim in range(n_embd):
         if dim not in wordmap_images:
@@ -151,15 +156,15 @@ def create_grid_for_vector(
 
         activation = vector[dim]
 
-        # Calculate opacity based on this activation relative to the max absolute activation
-        opacity = 0.5  # default
-        if max_abs_val > 0:
-            norm_opacity = abs(activation) / max_abs_val
-            opacity = (
-                0.1 + 0.9 * norm_opacity
-            )  # Scale to be more visible, from 10% to 100%
-
-        opacity = max(0.05, min(1.0, opacity))  # Clamp
+        # Calculate opacity using percentile-based approach for better contrast
+        if max_val > min_val:
+            percentile = np.mean(all_abs_values <= abs(activation))
+            opacity = np.power(
+                percentile, 0.5
+            )  # Use square root to boost mid-range values
+            opacity = max(0.1, min(1.0, opacity))  # Clamp and set a minimum visibility
+        else:
+            opacity = 0.5
 
         # Get the wordmap image and apply transformations
         wordmap_img = wordmap_images[dim].resize(
@@ -168,15 +173,12 @@ def create_grid_for_vector(
         if wordmap_img.mode != "RGBA":
             wordmap_img = wordmap_img.convert("RGBA")
 
-        # Use red for negative activations
+        # For negative activations, invert the colors for consistency with sentence_flow.py
         if activation < 0:
-            r, g, b, a = wordmap_img.split()
-            # Create a red overlay
-            red_overlay = Image.new("RGB", wordmap_img.size, (204, 0, 0))
-            wordmap_img = Image.blend(
-                wordmap_img.convert("RGB"), red_overlay, alpha=0.5
-            )
-            wordmap_img.putalpha(a)
+            img_array = np.array(wordmap_img)
+            # Invert RGB channels, but leave alpha untouched
+            img_array[:, :, :3] = 255 - img_array[:, :, :3]
+            wordmap_img = Image.fromarray(img_array, "RGBA")
 
         # Apply opacity
         alpha = wordmap_img.split()[-1]
