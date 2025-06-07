@@ -17,6 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 from wordcloud import WordCloud
 import json
 import matplotlib.pyplot as plt
+import io
 
 load_dotenv()
 
@@ -318,7 +319,7 @@ def main():
 
     # Config
     checkpoint_path = os.environ.get("MODEL")
-    probe_sentence = os.environ.get("PROBE_SENTENCE", "knock knock whos there bob")
+    probe_sentence = os.environ.get("PROBE_SENTENCE", "knock knock whos there cat")
 
     if not checkpoint_path:
         print("Error: MODEL environment variable not set.")
@@ -490,12 +491,12 @@ def create_logits_barchart(logit_vector, itos, top_k=5):
 
     plt.tight_layout()
 
-    # Save to a bytes buffer
-    import io
+    # Adjust x-axis limit to prevent label overlap
+    _, xmax = plt.xlim()
+    plt.xlim(xmax=xmax * 1.15)
 
     buf = io.BytesIO()
-    plt.savefig(buf, format="png")
-    plt.close(fig)
+    plt.savefig(buf, format="png", dpi=100)
     buf.seek(0)
     return Image.open(buf)
 
