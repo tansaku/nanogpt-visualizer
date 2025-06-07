@@ -19,8 +19,8 @@ The primary output is a detailed HTML page (`index.html`) that shows the state o
 
 ### 1. Prerequisites
 
-- Python 3.9+
-- [Pipenv](https://pipenv.pypa.io/en/latest/) for environment management.
+- A working installation of Python 3.9 or later.
+- `pip`, the Python package installer.
 
 ### 2. Setup
 
@@ -28,6 +28,11 @@ First, clone this repository:
 ```bash
 git clone https://github.com/tansaku/nanogpt-visualizer.git
 cd nanogpt-visualizer
+```
+
+Next, install Pipenv, which is used to manage the project's dependencies in a virtual environment:
+```bash
+pip install pipenv
 ```
 
 Install the required dependencies using Pipenv:
