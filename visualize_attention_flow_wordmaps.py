@@ -301,13 +301,22 @@ def create_grid_for_vector(
 # --- Main Execution ---
 
 
+def get_num_layers(model_state):
+    """Determines the number of layers in the model."""
+    max_layer = -1
+    for key in model_state.keys():
+        match = re.match(r"transformer\.h\.(\d+)\.", key)
+        if match:
+            max_layer = max(max_layer, int(match.group(1)))
+    return max_layer + 1
+
+
 def main():
     """Main function to generate the attention flow visualization."""
 
     # Config
     checkpoint_path = os.environ.get("MODEL")
     probe_sentence = os.environ.get("PROBE_SENTENCE", "knock knock whos there bob")
-    layer_idx = 0
 
     if not checkpoint_path:
         print("Error: MODEL environment variable not set.")
@@ -324,25 +333,56 @@ def main():
     if not stoi or not itos:
         sys.exit(1)
 
+    # --- Start of multi-layer processing ---
+    num_layers = get_num_layers(model_state)
+    print(f"Model has {num_layers} layers. Visualizing full flow.")
+
     # Prepare inputs
     words, token_ids = tokenize_sentence(probe_sentence, stoi)
     x = get_representations(token_ids, wte, wpe)  # Initial combined representations
-    weights = get_block_weights(model_state, model_args, layer_idx)
 
-    if weights is None:
-        print("Failed to get transformer block weights.")
-        sys.exit(1)
+    all_reps_by_layer = {}
+    all_attn_by_layer = {}
 
-    # Calculate all attention steps
-    representations, attention_weights = calculate_transformer_block_flow(
-        x, weights, model_args.get("n_head", 1)
-    )
+    # Loop through all transformer blocks
+    for layer_idx in range(num_layers):
+        print(f"\n--- Processing Layer {layer_idx} ---")
+        weights = get_block_weights(model_state, model_args, layer_idx)
+        if weights is None:
+            print(f"Failed to get weights for layer {layer_idx}. Aborting.")
+            sys.exit(1)
+
+        representations, attention_weights = calculate_transformer_block_flow(
+            x, weights, model_args.get("n_head", 1)
+        )
+        all_reps_by_layer[f"layer_{layer_idx}"] = representations
+        all_attn_by_layer[f"layer_{layer_idx}"] = attention_weights
+        x = representations["Block Output"]  # Output of this layer is input to next
+
+    # Process final layers after transformer blocks
+    print("\n--- Processing Final Layers ---")
+    final_reps = {}
+    final_ln_g = model_state.get("transformer.ln_f.weight")
+    final_ln_b = model_state.get("transformer.ln_f.bias")
+
+    if final_ln_g is not None and final_ln_b is not None:
+        x_ln_f = layernorm(x, final_ln_g.numpy(), final_ln_b.numpy())
+        final_reps["After Final LN"] = x_ln_f
+
+        # Project logits back into embedding space for visualization
+        lm_head_w = model_state.get("lm_head.weight")
+        if lm_head_w is not None:
+            logits = x_ln_f @ lm_head_w.T.numpy()
+            final_reps["Logits (Projected)"] = logits @ wte.numpy()
+        all_reps_by_layer["final"] = final_reps
+    else:
+        print("Warning: Final layer norm or lm_head not found.")
 
     # --- Create Visualizations ---
     model_dir = os.path.basename(os.path.dirname(checkpoint_path))
-    output_dir = os.path.join("visualizations", model_dir, "attention_flow_wordmaps")
+    output_dir = os.path.join("visualizations", model_dir, "full_model_flow")
     os.makedirs(output_dir, exist_ok=True)
-    print(f"Outputting to: {output_dir}")
+    print(f"\nOutputting to: {output_dir}")
 
     # Load base dimension wordmaps
     wordmap_images, wordmap_size = load_dimension_wordmaps(
@@ -351,25 +391,29 @@ def main():
     if wordmap_images is None:
         sys.exit(1)
 
-    # Collect all activation values to create a consistent opacity scale
-    all_values_for_scaling = np.concatenate(list(representations.values()))
+    # Collect ALL activation values for a consistent opacity scale
+    all_values_for_scaling = np.concatenate(
+        [v for layer_reps in all_reps_by_layer.values() for v in layer_reps.values()]
+    )
 
-    # Generate grid images for each step and each word
+    # Generate grid images for each step, each word, each layer
     image_paths = {}
-    for i, word in enumerate(words):
+    for layer_key, representations in all_reps_by_layer.items():
+        print(f"Generating images for: {layer_key}")
         for step_name, all_word_vectors in representations.items():
-            vector = all_word_vectors[i]
-            grid_img = create_grid_for_vector(
-                vector,
-                model_args["n_embd"],
-                wordmap_images,
-                wordmap_size,
-                all_values_for_scaling,
-            )
-            filename = f"{word}_{i}_{step_name.replace(' ', '_').replace('(', '').replace(')', '')}.png"
-            path = os.path.join(output_dir, filename)
-            grid_img.save(path)
-            image_paths[(word, i, step_name)] = filename
+            for i, word in enumerate(words):
+                vector = all_word_vectors[i]
+                grid_img = create_grid_for_vector(
+                    vector,
+                    model_args["n_embd"],
+                    wordmap_images,
+                    wordmap_size,
+                    all_values_for_scaling,
+                )
+                filename = f"{layer_key}_{word}_{i}_{step_name.replace(' ', '_').replace('(', '').replace(')', '')}.png"
+                path = os.path.join(output_dir, filename)
+                grid_img.save(path)
+                image_paths[(layer_key, word, i, step_name)] = filename
 
     # Generate HTML page to display everything in a grid
     generate_html_page(
@@ -378,11 +422,11 @@ def main():
         probe_sentence,
         words,
         image_paths,
-        attention_weights,
-        list(representations.keys()),
+        all_reps_by_layer,
+        all_attn_by_layer,
     )
 
-    print("\nDone! Wordmap grids for each step of the transformer block created.")
+    print("\nDone! Full model flow visualization created.")
     print(f"View the interactive summary at: {output_dir}/index.html")
 
 
@@ -392,65 +436,114 @@ def generate_html_page(
     probe_sentence,
     words,
     image_paths,
-    attention_weights,
-    header_cols,
+    all_reps_by_layer,
+    all_attn_by_layer,
 ):
-    """Generates an HTML page to display the attention flow grid."""
+    """Generates an HTML page with collapsible sections for each layer."""
 
-    # Add the 'Attention' column in the correct place
-    if "Attn Out (z)" in header_cols:
-        pos = header_cols.index("Attn Out (z)") + 1
-        header_cols.insert(pos, "Attention")
-    else:
-        header_cols.append("Attention")
+    layers_html = ""
+    num_layers = sum(1 for key in all_reps_by_layer if key.startswith("layer_"))
 
-    # Generate the rows for the main grid
-    rows_html = ""
-    for i, word in enumerate(words):
-        rows_html += "<tr>"
-        rows_html += (
-            f"<td class='word-label'>'{word}' <span class='pos'>(pos {i})</span></td>"
+    # Generate HTML for each Transformer Block
+    for layer_idx in range(num_layers):
+        layer_key = f"layer_{layer_idx}"
+        representations = all_reps_by_layer[layer_key]
+        attention_weights = all_attn_by_layer[layer_key]
+
+        header_cols = list(representations.keys())
+        if "Attn Out (z)" in header_cols:
+            pos = header_cols.index("Attn Out (z)") + 1
+            header_cols.insert(pos, "Attention")
+
+        # Table header
+        table_head_html = "<th>Word</th>" + "".join(
+            f"<th>{col}</th>" for col in header_cols
         )
 
-        # Wordmap and attention columns
-        for step_name in header_cols:
-            if step_name == "Attention":
-                # Attention column
-                attention_viz_html = "<div class='attention-bar-container'>"
-                for j, target_word in enumerate(words):
-                    weight = attention_weights[i, j]
-                    attention_viz_html += f"""
-                        <div class="bar-row">
-                            <span class="bar-label">{target_word}</span>
-                            <div class="bar" style="width: {weight*100*2}px; background-color: rgba(75, 192, 192, {weight*5});"></div>
-                            <span class="bar-value">{weight:.3f}</span>
-                        </div>
-                    """
-                attention_viz_html += "</div>"
-                rows_html += f"<td class='attention-cell'>{attention_viz_html}</td>"
-            else:
-                img_path = image_paths.get((word, i, step_name), "")
-                rows_html += f"<td><img src='{img_path}' title='{step_name}' loading='lazy'></td>"
+        # Table body
+        table_body_html = ""
+        for i, word in enumerate(words):
+            row_html = f"<tr><td class='word-label'>'{word}'<br><span class='pos'>(pos {i})</span></td>"
+            for step_name in header_cols:
+                if step_name == "Attention":
+                    attention_viz_html = "<div class='attention-bar-container'>"
+                    for j, target_word in enumerate(words):
+                        weight = attention_weights[i, j]
+                        attention_viz_html += f"""
+                            <div class="bar-row">
+                                <span class="bar-label">{target_word}</span>
+                                <div class="bar" style="width: {weight*100*2}px; background-color: rgba(75, 192, 192, {weight*5});"></div>
+                                <span class="bar-value">{weight:.3f}</span>
+                            </div>
+                        """
+                    attention_viz_html += "</div>"
+                    row_html += f"<td class='attention-cell'>{attention_viz_html}</td>"
+                else:
+                    img_path = image_paths.get((layer_key, word, i, step_name), "")
+                    row_html += f"<td><img src='{img_path}' title='{step_name}' loading='lazy'></td>"
+            row_html += "</tr>"
+            table_body_html += row_html
 
-        rows_html += "</tr>"
+        layers_html += f"""
+        <details {'open' if layer_idx == 0 else ''}>
+            <summary><h2>Transformer Block {layer_idx}</h2></summary>
+            <div class="table-container">
+                <table>
+                    <thead><tr>{table_head_html}</tr></thead>
+                    <tbody>{table_body_html}</tbody>
+                </table>
+            </div>
+        </details>
+        """
+
+    # Generate HTML for Final Layers
+    if "final" in all_reps_by_layer:
+        final_reps = all_reps_by_layer["final"]
+        header_cols = list(final_reps.keys())
+        table_head_html = "<th>Word</th>" + "".join(
+            f"<th>{col}</th>" for col in header_cols
+        )
+        table_body_html = ""
+        for i, word in enumerate(words):
+            row_html = f"<tr><td class='word-label'>'{word}'<br><span class='pos'>(pos {i})</span></td>"
+            for step_name in header_cols:
+                img_path = image_paths.get(("final", word, i, step_name), "")
+                row_html += f"<td><img src='{img_path}' title='{step_name}' loading='lazy'></td>"
+            row_html += "</tr>"
+            table_body_html += row_html
+
+        layers_html += f"""
+        <details open>
+            <summary><h2>Final Projection</h2></summary>
+            <div class="table-container">
+                <table>
+                    <thead><tr>{table_head_html}</tr></thead>
+                    <tbody>{table_body_html}</tbody>
+                </table>
+            </div>
+        </details>
+        """
 
     html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>Transformer Block Flow Visualization</title>
+        <title>Full Model Flow Visualization</title>
         <style>
             body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; margin: 2em; background: #f0f2f5; color: #333; }}
-            .container {{ max-width: 95%; margin: auto; background: white; padding: 2em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }}
             h1, h2, p {{ text-align: center; }}
-            table {{ width: 100%; border-collapse: collapse; margin-top: 2em; }}
-            th, td {{ border: 1px solid #ddd; padding: 10px; text-align: center; vertical-align: middle; }}
-            th {{ background-color: #f8f9fa; font-size: 1.1em; }}
+            details {{ background: white; border-radius: 8px; margin-bottom: 1em; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }}
+            summary {{ font-size: 1.5em; font-weight: bold; padding: 0.8em; cursor: pointer; }}
+            .container {{ max-width: 98%; margin: auto; }}
+            .table-container {{ overflow-x: auto; padding: 1em; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 1em; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: middle; min-width: 150px; }}
+            th {{ background-color: #f8f9fa; font-size: 1em; }}
             img {{ max-width: 100%; height: auto; border-radius: 4px; }}
-            .word-label {{ font-weight: bold; font-size: 1.2em; }}
+            .word-label {{ font-weight: bold; font-size: 1.1em; }}
             .pos {{ font-weight: normal; color: #666; font-size: 0.8em; }}
-            .attention-cell {{ width: 250px; }}
+            .attention-cell {{ min-width: 250px; }}
             .attention-bar-container {{ display: flex; flex-direction: column; gap: 4px; }}
             .bar-row {{ display: flex; align-items: center; gap: 5px; font-size: 0.8em; }}
             .bar-label {{ width: 50px; text-align: right; }}
@@ -460,20 +553,9 @@ def generate_html_page(
     </head>
     <body>
         <div class="container">
-            <h1>Transformer Block Flow Visualization</h1>
+            <h1>Full Model Flow Visualization</h1>
             <p><strong>Model:</strong> {model_name}<br><strong>Probe Sentence:</strong> "{probe_sentence}"</p>
-            <h2>Each row shows a word's journey through the first transformer block.</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Word</th>
-                        {''.join(f"<th>{col}</th>" for col in header_cols)}
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows_html}
-                </tbody>
-            </table>
+            {layers_html}
         </div>
     </body>
     </html>
