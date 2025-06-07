@@ -728,7 +728,7 @@ def generate_html_page(
                     <div class="modal-data-container">
                         <h3>Code:</h3>
                         <div id="modal-code" class="code-snippet"></div>
-                        <h3>Top 10 Activating Dimensions:</h3>
+                        <h3 id="modal-data-header">Top 10 Activating Dimensions:</h3>
                         <table id="modal-data-table" class="data-table">
                            <thead><tr><th>Dim</th><th>Value</th></tr></thead>
                            <tbody></tbody>
@@ -775,10 +775,11 @@ def generate_html_page(
                 const tableBody = document.querySelector("#modal-data-table tbody");
                 tableBody.innerHTML = "";
 
+                const dataHeader = document.getElementById("modal-data-header");
                 if (stepName === 'Logits') {{
-                    tableBody.parentElement.querySelector('h3').innerText = 'Top 10 Logit Values:';
+                    dataHeader.innerText = 'Top 10 Logit Values:';
                 }} else {{
-                    tableBody.parentElement.querySelector('h3').innerText = 'Top 10 Activating Dimensions:';
+                    dataHeader.innerText = 'Top 10 Activating Dimensions:';
                 }}
 
                 const sortedDims = vector.map((val, i) => ([i, val]))
