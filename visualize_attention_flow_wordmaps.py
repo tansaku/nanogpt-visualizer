@@ -15,6 +15,7 @@ import re
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 from wordcloud import WordCloud
+import json
 
 load_dotenv()
 
@@ -413,7 +414,9 @@ def main():
                 filename = f"{layer_key}_{word}_{i}_{step_name.replace(' ', '_').replace('(', '').replace(')', '')}.png"
                 path = os.path.join(output_dir, filename)
                 grid_img.save(path)
-                image_paths[(layer_key, word, i, step_name)] = filename
+                # Use a string key for JSON compatibility
+                key = f"{layer_key}||{word}||{i}||{step_name}"
+                image_paths[key] = filename
 
     # Generate HTML page to display everything in a grid
     generate_html_page(
@@ -430,6 +433,27 @@ def main():
     print(f"View the interactive summary at: {output_dir}/index.html")
 
 
+def get_code_snippet(step_name):
+    """Returns a hard-coded explanation for each calculation step."""
+
+    code_map = {
+        "Input (x)": "x = token_embedding + positional_embedding",
+        "After LN1": "x_ln1 = layernorm(x, ln1_gamma, ln1_beta)",
+        "Query (q)": "q = x_ln1 @ W_q + b_q",
+        "Key (k)": "k = x_ln1 @ W_k + b_k",
+        "Value (v)": "v = x_ln1 @ W_v + b_v",
+        "Attn Out (z)": "z = softmax((q @ k.T) / sqrt(d_k)) @ v",
+        "Attn Proj": "attn_proj = z @ c_proj_w + c_proj_b",
+        "After Resid1": "x = x + attn_proj",
+        "After LN2": "x_ln2 = layernorm(x, ln2_gamma, ln2_beta)",
+        "MLP Out": "mlp_out = gelu(x_ln2 @ mlp_fc_w + mlp_fc_b) @ mlp_proj_w + mlp_proj_b",
+        "Block Output": "x = x_after_attn + mlp_out",
+        "After Final LN": "x_final = layernorm(x, ln_f_gamma, ln_f_beta)",
+        "Logits (Projected)": "logits = x_final @ lm_head.T",
+    }
+    return code_map.get(step_name, "No code snippet available.")
+
+
 def generate_html_page(
     output_dir,
     model_name,
@@ -440,6 +464,15 @@ def generate_html_page(
     all_attn_by_layer,
 ):
     """Generates an HTML page with collapsible sections for each layer."""
+
+    # Create a JSON-serializable version of the data by converting numpy arrays to lists
+    serializable_reps = {
+        layer_key: {step_name: vectors.tolist() for step_name, vectors in reps.items()}
+        for layer_key, reps in all_reps_by_layer.items()
+    }
+    all_data_json = json.dumps(serializable_reps)
+    words_json = json.dumps(words)
+    image_paths_json = json.dumps(image_paths)
 
     layers_html = ""
     num_layers = sum(1 for key in all_reps_by_layer if key.startswith("layer_"))
@@ -479,8 +512,10 @@ def generate_html_page(
                     attention_viz_html += "</div>"
                     row_html += f"<td class='attention-cell'>{attention_viz_html}</td>"
                 else:
-                    img_path = image_paths.get((layer_key, word, i, step_name), "")
-                    row_html += f"<td><img src='{img_path}' title='{step_name}' loading='lazy'></td>"
+                    img_path = image_paths.get(
+                        f"{layer_key}||{word}||{i}||{step_name}", ""
+                    )
+                    row_html += f"<td><img src='{img_path}' title='{step_name}' loading='lazy' onclick='openModal(\"{layer_key}\", {i}, \"{step_name}\")'></td>"
             row_html += "</tr>"
             table_body_html += row_html
 
@@ -507,8 +542,8 @@ def generate_html_page(
         for i, word in enumerate(words):
             row_html = f"<tr><td class='word-label'>'{word}'<br><span class='pos'>(pos {i})</span></td>"
             for step_name in header_cols:
-                img_path = image_paths.get(("final", word, i, step_name), "")
-                row_html += f"<td><img src='{img_path}' title='{step_name}' loading='lazy'></td>"
+                img_path = image_paths.get(f"final||{word}||{i}||{step_name}", "")
+                row_html += f"<td><img src='{img_path}' title='{step_name}' loading='lazy' onclick='openModal(\"final\", {i}, \"{step_name}\")'></td>"
             row_html += "</tr>"
             table_body_html += row_html
 
@@ -540,7 +575,7 @@ def generate_html_page(
             table {{ width: 100%; border-collapse: collapse; margin-top: 1em; }}
             th, td {{ border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: middle; min-width: 150px; }}
             th {{ background-color: #f8f9fa; font-size: 1em; }}
-            img {{ max-width: 100%; height: auto; border-radius: 4px; }}
+            img {{ max-width: 100%; height: auto; border-radius: 4px; cursor: pointer; }}
             .word-label {{ font-weight: bold; font-size: 1.1em; }}
             .pos {{ font-weight: normal; color: #666; font-size: 0.8em; }}
             .attention-cell {{ min-width: 250px; }}
@@ -549,6 +584,33 @@ def generate_html_page(
             .bar-label {{ width: 50px; text-align: right; }}
             .bar {{ height: 12px; border-radius: 3px; border: 1px solid #eee; }}
             .bar-value {{ font-family: monospace; }}
+
+            /* Modal Styles */
+            .modal {{
+                display: none; position: fixed; z-index: 1000; left: 0; top: 0;
+                width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.7);
+            }}
+            .modal-content {{
+                background-color: #fefefe; margin: 5% auto; padding: 20px;
+                border: 1px solid #888; width: 80%; max-width: 1200px;
+                border-radius: 8px;
+            }}
+            .modal-header {{
+                display: flex; justify-content: space-between; align-items: center;
+                border-bottom: 1px solid #ddd; padding-bottom: 10px;
+            }}
+            .modal-header h2 {{ text-align: left; }}
+            .close {{ color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; }}
+            .modal-body {{ display: flex; gap: 20px; margin-top: 20px; }}
+            .modal-image-container {{ flex: 1; }}
+            .modal-data-container {{ flex: 1; }}
+            .code-snippet {{
+                background: #2d2d2d; color: #dcdcdc; padding: 15px;
+                border-radius: 5px; font-family: monospace; white-space: pre;
+            }}
+            .data-table {{ width: 100%; border-collapse: collapse; font-size: 0.9em; }}
+            .data-table th, .data-table td {{ border: 1px solid #eee; padding: 6px; text-align: left; }}
+            .data-table th {{ background-color: #f2f2f2; }}
         </style>
     </head>
     <body>
@@ -557,6 +619,91 @@ def generate_html_page(
             <p><strong>Model:</strong> {model_name}<br><strong>Probe Sentence:</strong> "{probe_sentence}"</p>
             {layers_html}
         </div>
+
+        <!-- Modal HTML Structure -->
+        <div id="modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="modal-title"></h2>
+                    <span class="close" onclick="closeModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-image-container">
+                        <img id="modal-img" src="" style="width:100%">
+                    </div>
+                    <div class="modal-data-container">
+                        <h3>Code:</h3>
+                        <div id="modal-code" class="code-snippet"></div>
+                        <h3>Top 10 Activating Dimensions:</h3>
+                        <table id="modal-data-table" class="data-table">
+                           <thead><tr><th>Dim</th><th>Value</th></tr></thead>
+                           <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            const allData = {all_data_json};
+            const allWords = {words_json};
+            const allImagePaths = {image_paths_json};
+            const codeSnippets = {{
+                "Input (x)": "x = token_embedding + positional_embedding",
+                "After LN1": "x_ln1 = layernorm(x, ln1_gamma, ln1_beta)",
+                "Query (q)": "q = x_ln1 @ W_q + b_q",
+                "Key (k)": "k = x_ln1 @ W_k + b_k",
+                "Value (v)": "v = x_ln1 @ W_v + b_v",
+                "Attn Out (z)": "z = softmax((q @ k.T) / sqrt(d_k)) @ v",
+                "Attn Proj": "attn_proj = z @ c_proj_w + c_proj_b",
+                "After Resid1": "x = x + attn_proj",
+                "After LN2": "x_ln2 = layernorm(x, ln2_gamma, ln2_beta)",
+                "MLP Out": "mlp_out = gelu(x_ln2 @ mlp_fc_w + mlp_fc_b) @ mlp_proj_w + mlp_proj_b",
+                "Block Output": "x = x_after_attn + mlp_out",
+                "After Final LN": "x_final = layernorm(x, ln_f_gamma, ln_f_beta)",
+                "Logits (Projected)": "logits = x_final @ lm_head.T"
+            }};
+
+            function openModal(layerKey, wordIndex, stepName) {{
+                const word = allWords[wordIndex];
+                const vector = allData[layerKey][stepName][wordIndex];
+
+                // Construct the string key to look up the image path
+                const key = `${{layerKey}}||${{word}}||${{wordIndex}}||${{stepName}}`;
+                const imgPath = allImagePaths[key];
+
+                // Populate Modal
+                document.getElementById('modal-title').innerText = `${{stepName}} for '${{word}}' (Layer ${{layerKey.split('_')[1] || 'Final'}})`;
+                document.getElementById('modal-img').src = imgPath;
+                document.getElementById('modal-code').innerText = codeSnippets[stepName];
+
+                // Populate data table
+                const tableBody = document.querySelector("#modal-data-table tbody");
+                tableBody.innerHTML = "";
+                const sortedDims = vector.map((val, i) => ([i, val]))
+                                       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+
+                for(let i=0; i<10; i++) {{
+                    const [dim, val] = sortedDims[i];
+                    const row = tableBody.insertRow();
+                    row.innerHTML = `<td>${{dim}}</td><td>${{val.toFixed(6)}}</td>`;
+                }}
+
+                document.getElementById('modal').style.display = 'block';
+            }}
+
+            function closeModal() {{
+                document.getElementById('modal').style.display = 'none';
+            }}
+
+            // Close modal if user clicks outside of it
+            window.onclick = function(event) {{
+                const modal = document.getElementById('modal');
+                if (event.target == modal) {{
+                    modal.style.display = "none";
+                }}
+            }}
+        </script>
     </body>
     </html>
     """
