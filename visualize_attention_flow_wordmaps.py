@@ -420,6 +420,7 @@ def main():
         }
     else:
         print("Warning: Final layer norm or lm_head not found.")
+        final_prediction_data = None
 
     # --- Create Visualizations ---
     model_dir = os.path.basename(os.path.dirname(checkpoint_path))
@@ -480,6 +481,35 @@ def main():
                 # Use a string key for JSON compatibility
                 key = f"{layer_key}||{word}||{i}||{step_name}"
                 image_paths[key] = filename
+
+    # --- NEW: Generate embedding visualizations for top predictions ---
+    if final_prediction_data:
+        top_prediction_words = final_prediction_data["words"]
+        all_wte_values = wte.numpy()  # For consistent scaling across embedding images
+
+        top_prediction_embedding_paths = []
+        for word in top_prediction_words:
+            token_id = stoi.get(word)
+            if token_id is None:
+                continue
+
+            embedding_vector = wte[token_id].numpy()
+
+            grid_img = create_grid_for_vector(
+                embedding_vector,
+                model_args["n_embd"],
+                wordmap_images,
+                wordmap_size,
+                all_wte_values,
+            )
+            # Sanitize word for filename to avoid issues with special characters
+            sanitized_word = re.sub(r"[^\w_.-]", "", word)
+            filename = f"top_prediction_embedding_{sanitized_word}.png"
+            path = os.path.join(output_dir, filename)
+            grid_img.save(path)
+            top_prediction_embedding_paths.append(filename)
+
+        final_prediction_data["embedding_img_paths"] = top_prediction_embedding_paths
 
     # Generate HTML page to display everything in a grid
     generate_html_page(
@@ -708,25 +738,60 @@ def generate_html_page(
 
     # Generate HTML for Final Prediction
     if final_prediction_data:
-        prediction_html = "<div class='prediction-bar-container'>"
-        for word, prob in zip(
-            final_prediction_data["words"], final_prediction_data["probabilities"]
-        ):
-            prediction_html += f"""
-                <div class="bar-row">
-                    <span class="bar-label">{word}</span>
-                    <div class="bar" style="width: {prob*100*4}px; background-color: rgba(220, 53, 69, {0.2 + prob*0.8});"></div>
-                    <span class="bar-value">{(prob*100):.2f}%</span>
-                </div>
+        prediction_html = "<div class='prediction-container'>"
+
+        # New table-based layout for top predictions with embedding visualizations
+        if "embedding_img_paths" in final_prediction_data:
+            prediction_html += """
+            <p style="text-align:left; max-width: 80%; margin: 1em auto; font-style: italic; color: #666;">
+                Below are the raw embedding representations for the top 10 potential next tokens.
+                You can compare the visualization for the top prediction with the
+                'Dot Product Breakdown' visualization in the 'Final Projection' section above.
+                The 'Dot Product Breakdown' shows how the model's final internal state
+                aligns with a token's embedding to produce a high logit score.
+            </p>
+            <table class='data-table' style='margin: 1em auto; width: 80%;'>
+               <thead><tr><th>Token</th><th>Probability</th><th>Embedding Visualization</th></tr></thead>
+               <tbody>
             """
+            for i, word in enumerate(final_prediction_data["words"]):
+                prob = final_prediction_data["probabilities"][i]
+                img_path = final_prediction_data["embedding_img_paths"][i]
+                safe_word = html.escape(word)
+                prediction_html += f"""
+                    <tr>
+                        <td class='word-label'>{safe_word}</td>
+                        <td>
+                            <div class="bar-row" style="justify-content: center; align-items: center;">
+                                <div class="bar" style="width: {prob*100*3}px; background-color: rgba(220, 53, 69, {{0.2 + prob*0.8}});"></div>
+                                <span class="bar-value" style="margin-left: 5px;">{(prob*100):.2f}%</span>
+                            </div>
+                        </td>
+                        <td><img src='{img_path}' loading='lazy' style='max-width: 200px; height: auto;' title='Embedding for "{safe_word}"'></td>
+                    </tr>
+                """
+            prediction_html += "</tbody></table>"
+        else:
+            # Fallback to old bar chart view
+            prediction_html += "<div class='prediction-bar-container'>"
+            for word, prob in zip(
+                final_prediction_data["words"], final_prediction_data["probabilities"]
+            ):
+                prediction_html += f"""
+                    <div class="bar-row">
+                        <span class="bar-label">{html.escape(word)}</span>
+                        <div class="bar" style="width: {{prob*100*4}}px; background-color: rgba(220, 53, 69, {{0.2 + prob*0.8}});"></div>
+                        <span class="bar-value">{{(prob*100):.2f}}%</span>
+                    </div>
+                """
+            prediction_html += "</div>"
+
         prediction_html += "</div>"
 
         layers_html += f"""
         <details open>
             <summary><h2>Next Token Prediction</h2></summary>
-            <div class='prediction-container'>
-                {prediction_html}
-            </div>
+            {prediction_html}
         </details>
         """
 
