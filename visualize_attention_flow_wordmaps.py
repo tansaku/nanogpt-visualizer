@@ -375,13 +375,13 @@ def main():
 
     if final_ln_g is not None:
         x_ln_f = layernorm(x, final_ln_g.numpy(), final_ln_b)
-        final_reps["After Final LN"] = x_ln_f
+        final_reps["After Final Layer Normalisation"] = x_ln_f
         all_reps_by_layer["final"] = final_reps
 
         # The lm_head weights are the same as the token embedding weights
         lm_head_w = wte.numpy()
         logits = x_ln_f @ lm_head_w.T
-        final_reps["Logits"] = logits
+        final_reps["Final Linear Layer"] = logits
 
         # Get probabilities for the token following the last input token
         last_token_logits = logits[-1]
@@ -416,7 +416,7 @@ def main():
             vectors
             for layer_reps in all_reps_by_layer.values()
             for step_name, vectors in layer_reps.items()
-            if step_name != "Logits"
+            if step_name != "Final Linear Layer"
         ]
     )
 
@@ -426,7 +426,7 @@ def main():
         print(f"Generating images for: {layer_key}")
         for step_name, all_word_vectors in representations.items():
             for i, word in enumerate(words):
-                if step_name == "Logits":
+                if step_name == "Final Linear Layer":
                     # Special visualization for the logits vector
                     grid_img = create_logits_barchart(all_word_vectors[i], itos)
                 else:
@@ -515,8 +515,8 @@ def get_code_snippet(step_name):
         "After LN2": "x = x + self.mlp(self.ln_2(x)) // self.ln_2(x) is applied first",
         "MLP Out": "x = self.mlp(x) // Full MLP block: fc -> gelu -> proj -> dropout",
         "Block Output": "x = x + self.mlp(self.ln_2(x)) // Second residual connection",
-        "After Final LN": "x = self.transformer.ln_f(x)",
-        "Logits": "logits = self.lm_head(x)",
+        "After Final Layer Normalisation": "x = self.transformer.ln_f(x) // Final layer normalization",
+        "Final Linear Layer": "logits = self.lm_head(x) // Final projection to vocabulary",
     }
     return code_map.get(step_name, "No code snippet available.")
 
@@ -754,8 +754,8 @@ def generate_html_page(
                 "After LN2": "x = x + self.mlp(self.ln_2(x)) // self.ln_2(x) is applied first",
                 "MLP Out": "x = self.mlp(x) // Full MLP block: fc -> gelu -> proj -> dropout",
                 "Block Output": "x = x + self.mlp(self.ln_2(x)) // Second residual connection",
-                "After Final LN": "x = self.transformer.ln_f(x)",
-                "Logits": "logits = self.lm_head(x)",
+                "After Final Layer Normalisation": "x = self.transformer.ln_f(x) // Final layer normalization",
+                "Final Linear Layer": "logits = self.lm_head(x) // Final projection to vocabulary",
             }};
 
             function openModal(layerKey, wordIndex, stepName) {{
