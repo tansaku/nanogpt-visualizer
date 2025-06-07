@@ -1,0 +1,47 @@
+name: Deploy Visualization to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Pipenv
+        run: pip install pipenv
+
+      - name: Install dependencies
+        run: pipenv install
+
+      - name: Run visualization script
+        run: |
+          pipenv run python visualize_attention_flow_wordmaps.py
+        env:
+          MODEL: visualizations/knock_6_1_36_words/ckpt.pt
+          PROBE_SENTENCE: "knock knock whos there cat"
+          NANOGPT_META_PATH: visualizations/knock_6_1_36_words/meta.pkl
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: visualizations/knock_6_1_36_words/full_model_flow
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
