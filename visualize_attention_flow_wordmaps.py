@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 from wordcloud import WordCloud
 import json
+import matplotlib.pyplot as plt
 
 load_dotenv()
 
@@ -380,6 +381,7 @@ def main():
         # The lm_head weights are the same as the token embedding weights
         lm_head_w = wte.numpy()
         logits = x_ln_f @ lm_head_w.T
+        final_reps["Logits"] = logits
 
         # Get probabilities for the token following the last input token
         last_token_logits = logits[-1]
@@ -408,9 +410,14 @@ def main():
     if wordmap_images is None:
         sys.exit(1)
 
-    # Collect ALL activation values for a consistent opacity scale
+    # Collect ALL activation values for a consistent opacity scale, excluding logits
     all_values_for_scaling = np.concatenate(
-        [v for layer_reps in all_reps_by_layer.values() for v in layer_reps.values()]
+        [
+            vectors
+            for layer_reps in all_reps_by_layer.values()
+            for step_name, vectors in layer_reps.items()
+            if step_name != "Logits"
+        ]
     )
 
     # Generate grid images for each step, each word, each layer
@@ -419,14 +426,18 @@ def main():
         print(f"Generating images for: {layer_key}")
         for step_name, all_word_vectors in representations.items():
             for i, word in enumerate(words):
-                vector = all_word_vectors[i]
-                grid_img = create_grid_for_vector(
-                    vector,
-                    model_args["n_embd"],
-                    wordmap_images,
-                    wordmap_size,
-                    all_values_for_scaling,
-                )
+                if step_name == "Logits":
+                    # Special visualization for the logits vector
+                    grid_img = create_logits_barchart(all_word_vectors[i], itos)
+                else:
+                    vector = all_word_vectors[i]
+                    grid_img = create_grid_for_vector(
+                        vector,
+                        model_args["n_embd"],
+                        wordmap_images,
+                        wordmap_size,
+                        all_values_for_scaling,
+                    )
                 filename = f"{layer_key}_{word}_{i}_{step_name.replace(' ', '_').replace('(', '').replace(')', '')}.png"
                 path = os.path.join(output_dir, filename)
                 grid_img.save(path)
@@ -450,6 +461,45 @@ def main():
     print(f"View the interactive summary at: {output_dir}/index.html")
 
 
+def create_logits_barchart(logit_vector, itos, top_k=5):
+    """Creates a bar chart image of the top k logits."""
+    top_k_indices = np.argsort(-logit_vector)[:top_k]
+    top_k_logits = logit_vector[top_k_indices]
+    top_k_words = [itos.get(i, f"unk_{i}") for i in top_k_indices]
+
+    # Create plot
+    fig, ax = plt.subplots(figsize=(3, 2), dpi=150)
+    bars = ax.barh(np.arange(top_k), top_k_logits, color="skyblue")
+    ax.set_yticks(np.arange(top_k))
+    ax.set_yticklabels(top_k_words, fontsize=8)
+    ax.invert_yaxis()  # Highest on top
+    ax.tick_params(axis="x", labelsize=8)
+    ax.set_xlabel("Logit Value", fontsize=8)
+
+    # Add value labels
+    for bar in bars:
+        width = bar.get_width()
+        ax.text(
+            width,
+            bar.get_y() + bar.get_height() / 2,
+            f" {width:.2f}",
+            va="center",
+            ha="left" if width > 0 else "right",
+            fontsize=7,
+        )
+
+    plt.tight_layout()
+
+    # Save to a bytes buffer
+    import io
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png")
+    plt.close(fig)
+    buf.seek(0)
+    return Image.open(buf)
+
+
 def get_code_snippet(step_name):
     """Returns a hard-coded explanation for each calculation step."""
 
@@ -466,7 +516,7 @@ def get_code_snippet(step_name):
         "MLP Out": "mlp_out = gelu(x_ln2 @ mlp_fc_w + mlp_fc_b) @ mlp_proj_w + mlp_proj_b",
         "Block Output": "x = x_after_attn + mlp_out",
         "After Final LN": "x_final = layernorm(x, ln_f_gamma, ln_f_beta)",
-        "Logits (Projected)": "logits = x_final @ lm_head.T",
+        "Logits": "logits = x_final @ lm_head.weight.T",
     }
     return code_map.get(step_name, "No code snippet available.")
 
@@ -705,7 +755,7 @@ def generate_html_page(
                 "MLP Out": "mlp_out = gelu(x_ln2 @ mlp_fc_w + mlp_fc_b) @ mlp_proj_w + mlp_proj_b",
                 "Block Output": "x = x_after_attn + mlp_out",
                 "After Final LN": "x_final = layernorm(x, ln_f_gamma, ln_f_beta)",
-                "Logits (Projected)": "logits = x_final @ lm_head.T"
+                "Logits": "logits = x_final @ lm_head.weight.T"
             }};
 
             function openModal(layerKey, wordIndex, stepName) {{
@@ -724,6 +774,13 @@ def generate_html_page(
                 // Populate data table
                 const tableBody = document.querySelector("#modal-data-table tbody");
                 tableBody.innerHTML = "";
+
+                if (stepName === 'Logits') {{
+                    tableBody.parentElement.querySelector('h3').innerText = 'Top 10 Logit Values:';
+                }} else {{
+                    tableBody.parentElement.querySelector('h3').innerText = 'Top 10 Activating Dimensions:';
+                }}
+
                 const sortedDims = vector.map((val, i) => ([i, val]))
                                        .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
 
