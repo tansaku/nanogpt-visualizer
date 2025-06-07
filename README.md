@@ -36,7 +36,22 @@ pipenv install
 pipenv shell
 ```
 
-### 3. Model and Data Setup
+### 3. Configure Your Environment
+
+The scripts in this repository use a `.env` file to manage configuration, such as model paths and the sentence to analyze.
+
+1.  **Create your environment file.** Copy the provided template to a new `.env` file:
+    ```bash
+    cp env.template .env
+    ```
+
+2.  **Edit your `.env` file.** Open the `.env` file and update the variables to point to your model files and the desired probe sentence.
+
+    -   `MODEL`: The path to your model checkpoint file (`.pt`).
+    -   `NANOGPT_META_PATH`: The path to your tokenizer metadata file (`.pkl`).
+    -   `PROBE_SENTENCE`: The input sentence you want to visualize.
+
+### 4. Model and Data Setup
 
 This tool expects your NanoGPT model files to be organized in a specific way within the `visualizations/` directory.
 
@@ -53,29 +68,19 @@ visualizations/
     └── meta.pkl
 ```
 
-### 4. Generate the Visualization
+### 5. Generate the Visualization
 
-The main script to run is `visualize_attention_flow_wordmaps.py`. It requires three environment variables to be set.
+Once your `.env` file is configured, you can run the main visualization script. The script will automatically load the variables from your `.env` file.
 
 ```bash
-# Set environment variables
-export MODEL="visualizations/my_model_name/ckpt.pt"
-export NANOGPT_META_PATH="visualizations/my_model_name/meta.pkl"
-export PROBE_SENTENCE="the quick brown fox"
-
-# Run the script
 python visualize_attention_flow_wordmaps.py
 ```
 
--   `MODEL`: The path to your model checkpoint file.
--   `NANOGPT_META_PATH`: The path to your tokenizer metadata file.
--   `PROBE_SENTENCE`: The input sentence you want to visualize.
+The script will generate a comprehensive set of images and an `index.html` file inside a new directory based on your model's name, e.g., `visualizations/my_model_name/full_model_flow/`.
 
-The script will generate a comprehensive set of images and an `index.html` file inside a new directory: `visualizations/my_model_name/full_model_flow/`.
+### 6. View and Deploy
 
-### 5. View and Deploy
-
-You can open `visualizations/my_model_name/full_model_flow/index.html` in your local browser to view the interactive report.
+You can open the generated `index.html` file in your local browser to view the interactive report.
 
 This repository is configured with a GitHub Action to automatically deploy the contents of the `visualizations/knock_6_1_36_words/full_model_flow` directory to GitHub Pages. To use this for your own model:
 
