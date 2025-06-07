@@ -38,10 +38,10 @@ jobs:
           NANOGPT_META_PATH: visualizations/knock_6_1_36_words/meta.pkl
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v2
+        uses: actions/upload-pages-artifact@v3
         with:
           path: visualizations/knock_6_1_36_words/full_model_flow
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4
