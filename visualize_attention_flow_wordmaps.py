@@ -18,6 +18,7 @@ from wordcloud import WordCloud
 import json
 import matplotlib.pyplot as plt
 import io
+import html
 
 load_dotenv()
 
@@ -403,7 +404,7 @@ def main():
         padded_breakdown = np.zeros_like(x_ln_f)
         padded_breakdown[-1] = dot_product_breakdown
 
-        breakdown_key = f"Dot Product Breakdown ('{top_prediction_word}')"
+        breakdown_key = f"Dot Product Breakdown for {top_prediction_word}"
         final_reps[breakdown_key] = padded_breakdown
         # --- End NEW ---
 
@@ -539,7 +540,7 @@ def create_logits_barchart(logit_vector, itos, top_k=5):
 def get_code_snippet_dict(top_prediction_word=""):
     """Returns a dictionary of all code snippets."""
 
-    breakdown_key = f"Dot Product Breakdown ('{top_prediction_word}')"
+    breakdown_key = f"Dot Product Breakdown for {top_prediction_word}"
 
     code_map = {
         "Input (x)": "x = self.transformer.drop(tok_emb + pos_emb)",
@@ -561,8 +562,17 @@ def get_code_snippet_dict(top_prediction_word=""):
     ] = f"""# The logit for '{top_prediction_word}' is the dot product:
 # final_norm_vector @ wte['{top_prediction_word}']
 
-# This visualization shows the element-wise product of that operation,
-# highlighting which dimensions contributed most to the final score.
+# This visualization shows the element-wise product of that operation.
+# Each grid square is a dimension, and its brightness shows its contribution
+# to the final logit score for '{top_prediction_word}'.
+
+# A bright square means that dimension was highly active in *both* the
+# final thought vector and the embedding for '{top_prediction_word}',
+# strongly pushing the model to predict '{top_prediction_word}'.
+
+# NOTE: The word-cloud for each dimension is just a label based on
+# which words activate it most across the whole vocabulary. It is not
+# the content of the dimension itself.
 logit_contribution = final_norm_vector * wte['{top_prediction_word}']"""
     return code_map
 
@@ -588,7 +598,8 @@ def generate_html_page(
     all_data_json = json.dumps(serializable_reps)
     words_json = json.dumps(words)
     image_paths_json = json.dumps(image_paths)
-    code_snippets_json = json.dumps(get_code_snippet_dict(top_prediction_word))
+    code_snippets_dict = get_code_snippet_dict(top_prediction_word)
+    code_snippets_json = json.dumps(code_snippets_dict)
 
     layers_html = ""
     num_layers = sum(1 for key in all_reps_by_layer if key.startswith("layer_"))
@@ -631,7 +642,11 @@ def generate_html_page(
                     img_path = image_paths.get(
                         f"{layer_key}||{word}||{i}||{step_name}", ""
                     )
-                    row_html += f"<td><img src='{img_path}' title='{step_name}' loading='lazy' onclick='openModal(\"{layer_key}\", {i}, \"{step_name}\")'></td>"
+                    # Use json.dumps to safely escape the step_name for JS onclick
+                    # and html.escape for the title attribute
+                    step_name_js = json.dumps(step_name)
+                    safe_title = html.escape(step_name)
+                    row_html += f"<td><img src='{img_path}' title='{safe_title}' loading='lazy' onclick='openModal(\"{layer_key}\", {i}, {step_name_js})'></td>"
             row_html += "</tr>"
             table_body_html += row_html
 
@@ -655,7 +670,7 @@ def generate_html_page(
         header_cols = []
         if "After Final Layer Normalisation" in final_reps:
             header_cols.append("After Final Layer Normalisation")
-        breakdown_key = f"Dot Product Breakdown ('{top_prediction_word}')"
+        breakdown_key = f"Dot Product Breakdown for {top_prediction_word}"
         if breakdown_key in final_reps:
             header_cols.append(breakdown_key)
         if "Final Linear Layer" in final_reps:
@@ -668,8 +683,14 @@ def generate_html_page(
         for i, word in enumerate(words):
             row_html = f"<tr><td class='word-label'>'{word}'<br><span class='pos'>(pos {i})</span></td>"
             for step_name in header_cols:
-                img_path = image_paths.get(f"final||{word}||{i}||{step_name}", "")
-                row_html += f"<td><img src='{img_path}' title='{step_name}' loading='lazy' onclick='openModal(\"final\", {i}, \"{step_name}\")'></td>"
+                # Don't show an image for padded breakdown cells which don't apply to earlier words
+                if "Dot Product Breakdown" in step_name and i < len(words) - 1:
+                    row_html += "<td></td>"
+                else:
+                    img_path = image_paths.get(f"final||{word}||{i}||{step_name}", "")
+                    step_name_js = json.dumps(step_name)
+                    safe_title = html.escape(step_name)
+                    row_html += f"<td><img src='{img_path}' title='{safe_title}' loading='lazy' onclick='openModal(\"final\", {i}, {step_name_js})'></td>"
             row_html += "</tr>"
             table_body_html += row_html
 
@@ -772,6 +793,12 @@ def generate_html_page(
             {layers_html}
         </div>
 
+        <!-- Data Injection using JSON script tags -->
+        <script id="all-data" type="application/json">{all_data_json}</script>
+        <script id="all-words" type="application/json">{words_json}</script>
+        <script id="all-image-paths" type="application/json">{image_paths_json}</script>
+        <script id="code-snippets" type="application/json">{code_snippets_json}</script>
+
         <!-- Modal HTML Structure -->
         <div id="modal" class="modal">
             <div class="modal-content">
@@ -785,7 +812,7 @@ def generate_html_page(
                     </div>
                     <div class="modal-data-container">
                         <h3>Code:</h3>
-                        <div id="modal-code" class="code-snippet"></div>
+                        <pre id="modal-code" class="code-snippet"></pre>
                         <h3 id="modal-data-header">Top 10 Activating Dimensions:</h3>
                         <table id="modal-data-table" class="data-table">
                            <thead><tr><th>Dim</th><th>Value</th></tr></thead>
@@ -797,10 +824,11 @@ def generate_html_page(
         </div>
 
         <script>
-            const allData = {all_data_json};
-            const allWords = {words_json};
-            const allImagePaths = {image_paths_json};
-            const codeSnippets = {code_snippets_json};
+            // Parse data from the DOM to prevent JS syntax errors with multi-line strings
+            const allData = JSON.parse(document.getElementById('all-data').textContent);
+            const allWords = JSON.parse(document.getElementById('all-words').textContent);
+            const allImagePaths = JSON.parse(document.getElementById('all-image-paths').textContent);
+            const codeSnippets = JSON.parse(document.getElementById('code-snippets').textContent);
 
             function openModal(layerKey, wordIndex, stepName) {{
                 const word = allWords[wordIndex];
@@ -813,7 +841,7 @@ def generate_html_page(
                 // Populate Modal
                 document.getElementById('modal-title').innerText = `${{stepName}} for '${{word}}' (Layer ${{layerKey.split('_')[1] || 'Final'}})`;
                 document.getElementById('modal-img').src = imgPath;
-                document.getElementById('modal-code').innerText = codeSnippets[stepName];
+                document.getElementById('modal-code').textContent = codeSnippets[stepName];
 
                 // Populate data table
                 const tableBody = document.querySelector("#modal-data-table tbody");
