@@ -71,6 +71,14 @@ def layernorm(x, gamma, beta, eps=1e-5):
     return gamma * x_normalized + beta
 
 
+def get_token_only_representations(token_ids, wte):
+    """Gets token embeddings without positional info."""
+    token_reprs = []
+    for token_id in token_ids:
+        token_reprs.append(wte[token_id].numpy())
+    return np.array(token_reprs)
+
+
 def get_representations(token_ids, wte, wpe):
     """Gets combined token + positional embeddings."""
     combined_reprs = []
@@ -343,10 +351,21 @@ def main():
 
     # Prepare inputs
     words, token_ids = tokenize_sentence(probe_sentence, stoi)
-    x = get_representations(token_ids, wte, wpe)  # Initial combined representations
+
+    # NEW: Get both token-only and combined representations
+    token_only_reps = get_token_only_representations(token_ids, wte)
+    x = get_representations(
+        token_ids, wte, wpe
+    )  # This is combined, becomes input to Block 0
 
     all_reps_by_layer = {}
     all_attn_by_layer = {}
+
+    # NEW: Add a special "Input" block for clarity
+    all_reps_by_layer["input"] = {
+        "Token Embedding": token_only_reps,
+        "Combined Embedding (Input to Block 0)": x,
+    }
 
     # Loop through all transformer blocks
     for layer_idx in range(num_layers):
@@ -447,7 +466,15 @@ def main():
 
     # Generate grid images for each step, each word, each layer
     image_paths = {}
-    for layer_key, representations in all_reps_by_layer.items():
+
+    # Define the order of layers for processing and generating HTML
+    layer_keys = ["input"] + [f"layer_{i}" for i in range(num_layers)] + ["final"]
+
+    for layer_key in layer_keys:
+        if layer_key not in all_reps_by_layer:
+            continue
+
+        representations = all_reps_by_layer[layer_key]
         print(f"Generating images for: {layer_key}")
         for step_name, all_word_vectors in representations.items():
             for i, word in enumerate(words):
@@ -634,20 +661,36 @@ def generate_html_page(
     layers_html = ""
     num_layers = sum(1 for key in all_reps_by_layer if key.startswith("layer_"))
 
-    # Generate HTML for each Transformer Block
-    for layer_idx in range(num_layers):
-        layer_key = f"layer_{layer_idx}"
+    # Define the order and titles for the HTML sections
+    html_titles = {
+        "input": "Input Embeddings",
+        **{f"layer_{i}": f"Transformer Block {i}" for i in range(num_layers)},
+        "final": "Final Projection",
+    }
+    ordered_keys = ["input"] + [f"layer_{i}" for i in range(num_layers)] + ["final"]
+
+    # Generate HTML for each main section (Input, Transformer Blocks, Final)
+    for layer_key in ordered_keys:
+        if layer_key not in all_reps_by_layer:
+            continue
+
+        summary_title = html_titles.get(layer_key, "Details")
+        # Keep the first block, input, and final projection sections open by default
+        is_open = layer_key in ["input", "final"] or layer_key == "layer_0"
+        details_options = "open" if is_open else ""
+
         representations = all_reps_by_layer[layer_key]
-        attention_weights = all_attn_by_layer[layer_key]
+        attention_weights = all_attn_by_layer.get(layer_key)
 
         header_cols = list(representations.keys())
-        if "Attn Out (z)" in header_cols:
+        # Inject "Attention" column if applicable for this layer
+        if attention_weights is not None and "Attn Out (z)" in header_cols:
             pos = header_cols.index("Attn Out (z)") + 1
             header_cols.insert(pos, "Attention")
 
         # Table header
         table_head_html = "<th>Word</th>" + "".join(
-            f"<th>{col}</th>" for col in header_cols
+            f"<th>{html.escape(col)}</th>" for col in header_cols
         )
 
         # Table body
@@ -661,19 +704,20 @@ def generate_html_page(
                         weight = attention_weights[i, j]
                         attention_viz_html += f"""
                             <div class="bar-row">
-                                <span class="bar-label">{target_word}</span>
+                                <span class="bar-label">{html.escape(target_word)}</span>
                                 <div class="bar" style="width: {weight*100*2}px; background-color: rgba(75, 192, 192, {weight*5});"></div>
                                 <span class="bar-value">{weight:.3f}</span>
                             </div>
                         """
                     attention_viz_html += "</div>"
                     row_html += f"<td class='attention-cell'>{attention_viz_html}</td>"
+                # Handle the case where a padded breakdown cell shouldn't have an image
+                elif "Dot Product Breakdown" in step_name and i < len(words) - 1:
+                    row_html += "<td></td>"
                 else:
                     img_path = image_paths.get(
                         f"{layer_key}||{word}||{i}||{step_name}", ""
                     )
-                    # Use json.dumps to safely escape the step_name for JS onclick
-                    # and html.escape for the title attribute
                     step_name_js = json.dumps(step_name)
                     safe_title = html.escape(step_name)
                     row_html += f"<td><img src='{img_path}' title='{safe_title}' loading='lazy' onclick='openModal(\"{layer_key}\", {i}, {step_name_js})'></td>"
@@ -681,52 +725,8 @@ def generate_html_page(
             table_body_html += row_html
 
         layers_html += f"""
-        <details {'open' if layer_idx == 0 else ''}>
-            <summary><h2>Transformer Block {layer_idx}</h2></summary>
-            <div class="table-container">
-                <table>
-                    <thead><tr>{table_head_html}</tr></thead>
-                    <tbody>{table_body_html}</tbody>
-                </table>
-            </div>
-        </details>
-        """
-
-    # Generate HTML for Final Layers
-    if "final" in all_reps_by_layer:
-        final_reps = all_reps_by_layer["final"]
-
-        # Manually order the columns for clarity
-        header_cols = []
-        if "After Final Layer Normalisation" in final_reps:
-            header_cols.append("After Final Layer Normalisation")
-        breakdown_key = f"Dot Product Breakdown for {top_prediction_word}"
-        if breakdown_key in final_reps:
-            header_cols.append(breakdown_key)
-        if "Final Linear Layer" in final_reps:
-            header_cols.append("Final Linear Layer")
-
-        table_head_html = "<th>Word</th>" + "".join(
-            f"<th>{col}</th>" for col in header_cols
-        )
-        table_body_html = ""
-        for i, word in enumerate(words):
-            row_html = f"<tr><td class='word-label'>'{word}'<br><span class='pos'>(pos {i})</span></td>"
-            for step_name in header_cols:
-                # Don't show an image for padded breakdown cells which don't apply to earlier words
-                if "Dot Product Breakdown" in step_name and i < len(words) - 1:
-                    row_html += "<td></td>"
-                else:
-                    img_path = image_paths.get(f"final||{word}||{i}||{step_name}", "")
-                    step_name_js = json.dumps(step_name)
-                    safe_title = html.escape(step_name)
-                    row_html += f"<td><img src='{img_path}' title='{safe_title}' loading='lazy' onclick='openModal(\"final\", {i}, {step_name_js})'></td>"
-            row_html += "</tr>"
-            table_body_html += row_html
-
-        layers_html += f"""
-        <details open>
-            <summary><h2>Final Projection</h2></summary>
+        <details {details_options}>
+            <summary><h2>{summary_title}</h2></summary>
             <div class="table-container">
                 <table>
                     <thead><tr>{table_head_html}</tr></thead>
@@ -762,8 +762,8 @@ def generate_html_page(
                     <tr>
                         <td class='word-label'>{safe_word}</td>
                         <td>
-                            <div class="bar-row" style="justify-content: center; align-items: center;">
-                                <div class="bar" style="width: {prob*100*3}px; background-color: rgba(220, 53, 69, {{0.2 + prob*0.8}});"></div>
+                            <div class="prediction-prob-container">
+                                <div class="bar" style="width: {prob*100*3}px; background-color: rgba(220, 53, 69, {0.2 + prob*0.8});"></div>
                                 <span class="bar-value" style="margin-left: 5px;">{(prob*100):.2f}%</span>
                             </div>
                         </td>
@@ -781,7 +781,7 @@ def generate_html_page(
                     <div class="bar-row">
                         <span class="bar-label">{html.escape(word)}</span>
                         <div class="bar" style="width: {{prob*100*4}}px; background-color: rgba(220, 53, 69, {{0.2 + prob*0.8}});"></div>
-                        <span class="bar-value">{{(prob*100):.2f}}%</span>
+                        <span class="bar-value">{{prob*100:0.2f}}%</span>
                     </div>
                 """
             prediction_html += "</div>"
@@ -844,9 +844,16 @@ def generate_html_page(
                 background: #2d2d2d; color: #dcdcdc; padding: 15px;
                 border-radius: 5px; font-family: monospace; white-space: pre;
             }}
-            .data-table {{ width: 100%; border-collapse: collapse; font-size: 0.9em; }}
-            .data-table th, .data-table td {{ border: 1px solid #eee; padding: 6px; text-align: left; }}
+            .data-table {{ width: 100%; border-collapse: collapse; font-size: 1em; }}
+            .data-table th, .data-table td {{ border: 1px solid #eee; padding: 8px; text-align: left; vertical-align: middle; }}
             .data-table th {{ background-color: #f2f2f2; }}
+
+            .prediction-prob-container {{
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }}
+
             .prediction-container {{ padding: 2em; }}
             .prediction-bar-container {{ display: flex; flex-direction: column; gap: 6px; max-width: 500px; margin: auto; }}
         </style>
@@ -913,8 +920,8 @@ def generate_html_page(
                 tableBody.innerHTML = "";
 
                 const dataHeader = document.getElementById("modal-data-header");
-                if (stepName === 'Logits') {{
-                    dataHeader.innerText = 'Top 10 Logit Values:';
+                if (stepName === 'Final Linear Layer') {{
+                    dataHeader.innerText = 'Top 5 Logit Values:';
                 }} else {{
                     dataHeader.innerText = 'Top 10 Activating Dimensions:';
                 }}
