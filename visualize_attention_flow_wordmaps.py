@@ -384,8 +384,30 @@ def main():
         logits = x_ln_f @ lm_head_w.T
         final_reps["Final Linear Layer"] = logits
 
-        # Get probabilities for the token following the last input token
+        # --- NEW: Dot Product Breakdown Visualization ---
+        # Get the top predicted token to explain its logit
         last_token_logits = logits[-1]
+        top_prediction_idx = np.argmax(last_token_logits)
+        top_prediction_word = itos[top_prediction_idx]
+
+        # Get the vector for the last input word after final norm
+        final_norm_vector_last_word = x_ln_f[-1]
+
+        # Get the embedding for the predicted word
+        predicted_word_embedding = wte[top_prediction_idx].numpy()
+
+        # Calculate element-wise product, showing each dimension's contribution to the logit
+        dot_product_breakdown = final_norm_vector_last_word * predicted_word_embedding
+
+        # This breakdown is only for the last word; pad for other words to fit the data structure
+        padded_breakdown = np.zeros_like(x_ln_f)
+        padded_breakdown[-1] = dot_product_breakdown
+
+        breakdown_key = f"Dot Product Breakdown ('{top_prediction_word}')"
+        final_reps[breakdown_key] = padded_breakdown
+        # --- End NEW ---
+
+        # Get probabilities for the token following the last input token
         probs = np.exp(last_token_logits) / np.sum(np.exp(last_token_logits))  # Softmax
 
         # Get top 10 predictions
@@ -432,14 +454,26 @@ def main():
                     grid_img = create_logits_barchart(all_word_vectors[i], itos)
                 else:
                     vector = all_word_vectors[i]
-                    grid_img = create_grid_for_vector(
-                        vector,
-                        model_args["n_embd"],
-                        wordmap_images,
-                        wordmap_size,
-                        all_values_for_scaling,
-                    )
-                filename = f"{layer_key}_{word}_{i}_{step_name.replace(' ', '_').replace('(', '').replace(')', '')}.png"
+                    # Don't generate images for the padded zero vectors in the breakdown
+                    if "Dot Product Breakdown" in step_name and np.all(vector == 0):
+                        # Create a blank placeholder image
+                        grid_img = Image.new("RGB", (1, 1), "white")
+                    else:
+                        grid_img = create_grid_for_vector(
+                            vector,
+                            model_args["n_embd"],
+                            wordmap_images,
+                            wordmap_size,
+                            all_values_for_scaling,
+                        )
+                # Sanitize step_name for filename, which may contain single quotes
+                sanitized_step_name = (
+                    step_name.replace("'", "")
+                    .replace(" ", "_")
+                    .replace("(", "")
+                    .replace(")", "")
+                )
+                filename = f"{layer_key}_{word}_{i}_{sanitized_step_name}.png"
                 path = os.path.join(output_dir, filename)
                 grid_img.save(path)
                 # Use a string key for JSON compatibility
@@ -456,6 +490,7 @@ def main():
         all_reps_by_layer,
         all_attn_by_layer,
         final_prediction_data,
+        top_prediction_word,
     )
 
     print("\nDone! Full model flow visualization created.")
@@ -501,8 +536,10 @@ def create_logits_barchart(logit_vector, itos, top_k=5):
     return Image.open(buf)
 
 
-def get_code_snippet(step_name):
-    """Returns a hard-coded explanation for each calculation step."""
+def get_code_snippet_dict(top_prediction_word=""):
+    """Returns a dictionary of all code snippets."""
+
+    breakdown_key = f"Dot Product Breakdown ('{top_prediction_word}')"
 
     code_map = {
         "Input (x)": "x = self.transformer.drop(tok_emb + pos_emb)",
@@ -519,7 +556,15 @@ def get_code_snippet(step_name):
         "After Final Layer Normalisation": "x = self.transformer.ln_f(x) // Final layer normalization",
         "Final Linear Layer": "logits = self.lm_head(x) // Final projection to vocabulary",
     }
-    return code_map.get(step_name, "No code snippet available.")
+    code_map[
+        breakdown_key
+    ] = f"""# The logit for '{top_prediction_word}' is the dot product:
+# final_norm_vector @ wte['{top_prediction_word}']
+
+# This visualization shows the element-wise product of that operation,
+# highlighting which dimensions contributed most to the final score.
+logit_contribution = final_norm_vector * wte['{top_prediction_word}']"""
+    return code_map
 
 
 def generate_html_page(
@@ -531,6 +576,7 @@ def generate_html_page(
     all_reps_by_layer,
     all_attn_by_layer,
     final_prediction_data,
+    top_prediction_word,
 ):
     """Generates an HTML page with collapsible sections for each layer."""
 
@@ -542,6 +588,7 @@ def generate_html_page(
     all_data_json = json.dumps(serializable_reps)
     words_json = json.dumps(words)
     image_paths_json = json.dumps(image_paths)
+    code_snippets_json = json.dumps(get_code_snippet_dict(top_prediction_word))
 
     layers_html = ""
     num_layers = sum(1 for key in all_reps_by_layer if key.startswith("layer_"))
@@ -603,7 +650,17 @@ def generate_html_page(
     # Generate HTML for Final Layers
     if "final" in all_reps_by_layer:
         final_reps = all_reps_by_layer["final"]
-        header_cols = list(final_reps.keys())
+
+        # Manually order the columns for clarity
+        header_cols = []
+        if "After Final Layer Normalisation" in final_reps:
+            header_cols.append("After Final Layer Normalisation")
+        breakdown_key = f"Dot Product Breakdown ('{top_prediction_word}')"
+        if breakdown_key in final_reps:
+            header_cols.append(breakdown_key)
+        if "Final Linear Layer" in final_reps:
+            header_cols.append("Final Linear Layer")
+
         table_head_html = "<th>Word</th>" + "".join(
             f"<th>{col}</th>" for col in header_cols
         )
@@ -743,21 +800,7 @@ def generate_html_page(
             const allData = {all_data_json};
             const allWords = {words_json};
             const allImagePaths = {image_paths_json};
-            const codeSnippets = {{
-                "Input (x)": "x = self.transformer.drop(tok_emb + pos_emb)",
-                "After LN1": "x = x + self.attn(self.ln_1(x))  // self.ln_1(x) is applied first",
-                "Query (q)": "q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)",
-                "Key (k)": "q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)",
-                "Value (v)": "q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)",
-                "Attn Out (z)": "y = att @ v  // Weighted sum of Value vectors",
-                "Attn Proj": "y = self.resid_dropout(self.c_proj(y))",
-                "After Resid1": "x = x + self.attn(self.ln_1(x)) // First residual connection",
-                "After LN2": "x = x + self.mlp(self.ln_2(x)) // self.ln_2(x) is applied first",
-                "MLP Out": "x = self.mlp(x) // Full MLP block: fc -> gelu -> proj -> dropout",
-                "Block Output": "x = x + self.mlp(self.ln_2(x)) // Second residual connection",
-                "After Final Layer Normalisation": "x = self.transformer.ln_f(x) // Final layer normalization",
-                "Final Linear Layer": "logits = self.lm_head(x) // Final projection to vocabulary",
-            }};
+            const codeSnippets = {code_snippets_json};
 
             function openModal(layerKey, wordIndex, stepName) {{
                 const word = allWords[wordIndex];
