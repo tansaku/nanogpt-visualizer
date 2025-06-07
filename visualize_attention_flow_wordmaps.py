@@ -363,19 +363,35 @@ def main():
     # Process final layers after transformer blocks
     print("\n--- Processing Final Layers ---")
     final_reps = {}
+    final_prediction_data = None
     final_ln_g = model_state.get("transformer.ln_f.weight")
-    final_ln_b = model_state.get("transformer.ln_f.bias")
+    final_ln_b_tensor = model_state.get("transformer.ln_f.bias")
+    final_ln_b = (
+        final_ln_b_tensor.numpy()
+        if final_ln_b_tensor is not None
+        else np.zeros(model_args["n_embd"])
+    )
 
-    if final_ln_g is not None and final_ln_b is not None:
-        x_ln_f = layernorm(x, final_ln_g.numpy(), final_ln_b.numpy())
+    if final_ln_g is not None:
+        x_ln_f = layernorm(x, final_ln_g.numpy(), final_ln_b)
         final_reps["After Final LN"] = x_ln_f
-
-        # Project logits back into embedding space for visualization
-        lm_head_w = model_state.get("lm_head.weight")
-        if lm_head_w is not None:
-            logits = x_ln_f @ lm_head_w.T.numpy()
-            final_reps["Logits (Projected)"] = logits @ wte.numpy()
         all_reps_by_layer["final"] = final_reps
+
+        # The lm_head weights are the same as the token embedding weights
+        lm_head_w = wte.numpy()
+        logits = x_ln_f @ lm_head_w.T
+
+        # Get probabilities for the token following the last input token
+        last_token_logits = logits[-1]
+        probs = np.exp(last_token_logits) / np.sum(np.exp(last_token_logits))  # Softmax
+
+        # Get top 10 predictions
+        top_k = 10
+        top_k_indices = np.argsort(-probs)[:top_k]
+        final_prediction_data = {
+            "words": [itos[i] for i in top_k_indices],
+            "probabilities": probs[top_k_indices].tolist(),
+        }
     else:
         print("Warning: Final layer norm or lm_head not found.")
 
@@ -427,6 +443,7 @@ def main():
         image_paths,
         all_reps_by_layer,
         all_attn_by_layer,
+        final_prediction_data,
     )
 
     print("\nDone! Full model flow visualization created.")
@@ -462,6 +479,7 @@ def generate_html_page(
     image_paths,
     all_reps_by_layer,
     all_attn_by_layer,
+    final_prediction_data,
 ):
     """Generates an HTML page with collapsible sections for each layer."""
 
@@ -559,6 +577,30 @@ def generate_html_page(
         </details>
         """
 
+    # Generate HTML for Final Prediction
+    if final_prediction_data:
+        prediction_html = "<div class='prediction-bar-container'>"
+        for word, prob in zip(
+            final_prediction_data["words"], final_prediction_data["probabilities"]
+        ):
+            prediction_html += f"""
+                <div class="bar-row">
+                    <span class="bar-label">{word}</span>
+                    <div class="bar" style="width: {prob*100*4}px; background-color: rgba(220, 53, 69, {0.2 + prob*0.8});"></div>
+                    <span class="bar-value">{(prob*100):.2f}%</span>
+                </div>
+            """
+        prediction_html += "</div>"
+
+        layers_html += f"""
+        <details open>
+            <summary><h2>Next Token Prediction</h2></summary>
+            <div class='prediction-container'>
+                {prediction_html}
+            </div>
+        </details>
+        """
+
     html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -581,8 +623,8 @@ def generate_html_page(
             .attention-cell {{ min-width: 250px; }}
             .attention-bar-container {{ display: flex; flex-direction: column; gap: 4px; }}
             .bar-row {{ display: flex; align-items: center; gap: 5px; font-size: 0.8em; }}
-            .bar-label {{ width: 50px; text-align: right; }}
-            .bar {{ height: 12px; border-radius: 3px; border: 1px solid #eee; }}
+            .bar-label {{ width: 80px; text-align: right; }}
+            .bar {{ height: 16px; border-radius: 3px; border: 1px solid #eee; }}
             .bar-value {{ font-family: monospace; }}
 
             /* Modal Styles */
@@ -611,6 +653,8 @@ def generate_html_page(
             .data-table {{ width: 100%; border-collapse: collapse; font-size: 0.9em; }}
             .data-table th, .data-table td {{ border: 1px solid #eee; padding: 6px; text-align: left; }}
             .data-table th {{ background-color: #f2f2f2; }}
+            .prediction-container {{ padding: 2em; }}
+            .prediction-bar-container {{ display: flex; flex-direction: column; gap: 6px; max-width: 500px; margin: auto; }}
         </style>
     </head>
     <body>
