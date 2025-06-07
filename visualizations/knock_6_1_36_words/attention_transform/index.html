@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attention Transformation - knock_6_1_36_words</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2em;
+        }
+        .header p {
+            margin: 5px 0;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .section-tabs {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .section-tab-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }
+        .section-tab-btn {
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            color: #495057;
+            padding: 15px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+            min-width: 180px;
+        }
+        .section-tab-btn:hover {
+            background: #e9ecef;
+            border-color: #adb5bd;
+        }
+        .section-tab-btn.active {
+            background: #2c3e50;
+            border-color: #2c3e50;
+            color: white;
+        }
+        .transform-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+            margin: 30px 0;
+        }
+        .transform-card {
+            border: 2px solid #ddd;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
+        .transform-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        .transform-card.query { border-color: #e74c3c; }
+        .transform-card.key { border-color: #f39c12; }
+        .transform-card.value { border-color: #27ae60; }
+
+        .transform-header {
+            padding: 15px 20px;
+            font-weight: bold;
+            color: white;
+            text-align: center;
+        }
+        .transform-header.query { background: #e74c3c; }
+        .transform-header.key { background: #f39c12; }
+        .transform-header.value { background: #27ae60; }
+
+        .transform-image {
+            padding: 0;
+        }
+        .transform-image img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .transform-stats {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            font-size: 12px;
+        }
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+        .attention-section {
+            margin: 30px 0;
+            text-align: center;
+        }
+        .attention-card {
+            border: 2px solid #3498db;
+            border-radius: 12px;
+            overflow: hidden;
+            max-width: 1200px;
+            margin: 0 auto;
+            cursor: pointer;
+        }
+        .attention-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        .attention-header {
+            background: #3498db;
+            color: white;
+            padding: 15px 20px;
+            font-weight: bold;
+            text-align: center;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            max-width: 95%;
+            max-height: 95%;
+            overflow: auto;
+            position: relative;
+        }
+        .modal .close {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            color: #666;
+            font-size: 30px;
+            cursor: pointer;
+            z-index: 1001;
+        }
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            background: #f8f9fa;
+        }
+        .modal-body {
+            padding: 20px;
+            text-align: center;
+        }
+        .modal-body img {
+            max-width: 100%;
+            height: auto;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        .stat-card .value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .section {
+            display: none;
+        }
+        .section.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Attention Transformation Visualization</h1>
+            <p><strong>Model:</strong> knock_6_1_36_words</p>
+            <p><strong>Probe Sentence:</strong> "knock knock whos there bob"</p>
+            <p><strong>Layer:</strong> 0 (First Attention Layer)</p>
+        </div>
+
+        <div class="content">
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>Words</h3>
+                    <div class="value">5</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Dimensions</h3>
+                    <div class="value">36</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Transformations</h3>
+                    <div class="value">Q + K + V</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Attention Patterns</h3>
+                    <div class="value">5×5</div>
+                </div>
+            </div>
+
+            <div class="info">
+                <h3>Understanding Attention Transformations</h3>
+                <p>This visualization shows how your probe sentence gets transformed through the first attention layer:</p>
+                <ul>
+                    <li><strong>Combined Input:</strong> Token embeddings + positional encodings from sentence flow</li>
+                    <li><strong>Query (Q):</strong> "What am I looking for?" - How each word searches for relevant information</li>
+                    <li><strong>Key (K):</strong> "What do I offer?" - How each word presents itself as relevant information</li>
+                    <li><strong>Value (V):</strong> "What do I contribute?" - The actual information each word provides when attended to</li>
+                    <li><strong>Attention Pattern:</strong> Q @ K.T - Which words attend to which other words</li>
+                </ul>
+                <p><strong>Color coding:</strong> Red = positive values, Blue = negative values, White = near zero</p>
+                <p><strong>Click any visualization</strong> to view it in full size</p>
+            </div>
+
+            <div class="section-tabs">
+                <h3>View:</h3>
+                <div class="section-tab-buttons">
+                    <button class="section-tab-btn active" onclick="showSection('transformations')">Q/K/V Transformations</button>
+                    <button class="section-tab-btn" onclick="showSection('attention')">Attention Patterns</button>
+                </div>
+            </div>
+
+            <div class="section active" id="transformations">
+                <div class="transform-grid">
+                    <div class="transform-card query" onclick="openModal('query_heatmap.png', 'Query Transformation')">
+                        <div class="transform-header query">
+                            QUERY (Q) Transformation
+                        </div>
+                        <div class="transform-image">
+                            <img src="query_heatmap.png" alt="Query transformation">
+                        </div>
+                        <div class="transform-stats">
+                            <div class="stat-row">
+                                <span>Mean:</span>
+                                <span id="query-mean">-0.0035</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>Std:</span>
+                                <span id="query-std">0.0622</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>Range:</span>
+                                <span id="query-range">[-0.205, 0.207]</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="transform-card key" onclick="openModal('key_heatmap.png', 'Key Transformation')">
+                        <div class="transform-header key">
+                            KEY (K) Transformation
+                        </div>
+                        <div class="transform-image">
+                            <img src="key_heatmap.png" alt="Key transformation">
+                        </div>
+                        <div class="transform-stats">
+                            <div class="stat-row">
+                                <span>Mean:</span>
+                                <span id="key-mean">0.0118</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>Std:</span>
+                                <span id="key-std">0.0775</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>Range:</span>
+                                <span id="key-range">[-0.175, 0.220]</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="transform-card value" onclick="openModal('value_heatmap.png', 'Value Transformation')">
+                        <div class="transform-header value">
+                            VALUE (V) Transformation
+                        </div>
+                        <div class="transform-image">
+                            <img src="value_heatmap.png" alt="Value transformation">
+                        </div>
+                        <div class="transform-stats">
+                            <div class="stat-row">
+                                <span>Mean:</span>
+                                <span id="value-mean">-0.0025</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>Std:</span>
+                                <span id="value-std">0.0218</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>Range:</span>
+                                <span id="value-range">[-0.088, 0.071]</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section" id="attention">
+                <div class="attention-section">
+                    <div class="attention-card" onclick="openModal('attention_patterns.png', 'Attention Patterns')">
+                        <div class="attention-header">
+                            ATTENTION PATTERNS (Q @ K.T)
+                        </div>
+                        <div class="transform-image">
+                            <img src="attention_patterns.png" alt="Attention patterns">
+                        </div>
+                        <div class="transform-stats">
+                            <div class="stat-row">
+                                <span>Score Mean:</span>
+                                <span>-0.0535</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>Weight Mean:</span>
+                                <span>0.2000</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>Max Attention:</span>
+                                <span>0.2166</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info">
+                    <h3>Reading Attention Patterns</h3>
+                    <p>The attention heatmaps show which words attend to which:</p>
+                    <ul>
+                        <li><strong>Rows (Y-axis):</strong> Queries - the word that is "looking"</li>
+                        <li><strong>Columns (X-axis):</strong> Keys - the word being "looked at"</li>
+                        <li><strong>Brightness:</strong> How much attention is paid (higher = more attention)</li>
+                        <li><strong>Self-attention:</strong> Diagonal elements show how much each word attends to itself</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <div class="modal-header">
+                <h2 id="modal-title">Transformation Details</h2>
+            </div>
+            <div class="modal-body">
+                <img id="modal-img" src="" alt="">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const allStats = {"query": {"mean": -0.003477770835161209, "std": 0.06215697154402733, "min": -0.2051633894443512, "max": 0.2073918581008911, "shape": [5, 36]}, "key": {"mean": 0.011771713383495808, "std": 0.07751432061195374, "min": -0.1754770427942276, "max": 0.22020366787910461, "shape": [5, 36]}, "value": {"mean": -0.002458400558680296, "std": 0.021813377737998962, "min": -0.08805125951766968, "max": 0.07082703709602356, "shape": [5, 36]}, "attention": {"scores_mean": -0.05350043252110481, "scores_std": 0.04988040030002594, "weights_mean": 0.20000000298023224, "weights_std": 0.008885449729859829, "max_attention": 0.2166011482477188, "min_attention": 0.18668615818023682}};
+        let currentSection = 'transformations';
+
+        function showSection(section) {
+            // Hide all sections
+            document.querySelectorAll('.section').forEach(sec => {
+                sec.classList.remove('active');
+            });
+            document.querySelectorAll('.section-tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show selected section
+            document.getElementById(section).classList.add('active');
+            event.target.classList.add('active');
+
+            currentSection = section;
+        }
+
+        function openModal(imageSrc, title) {
+            const modal = document.getElementById('modal');
+            const modalImg = document.getElementById('modal-img');
+            const modalTitle = document.getElementById('modal-title');
+
+            modalImg.src = imageSrc;
+            modalTitle.textContent = title;
+            modal.style.display = 'flex';
+        }
+
+        function closeModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        // Close modal on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,194 @@
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Transformer Block Flow Visualization</title>
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; margin: 2em; background: #f0f2f5; color: #333; }
+            .container { max-width: 95%; margin: auto; background: white; padding: 2em; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+            h1, h2, p { text-align: center; }
+            table { width: 100%; border-collapse: collapse; margin-top: 2em; }
+            th, td { border: 1px solid #ddd; padding: 10px; text-align: center; vertical-align: middle; }
+            th { background-color: #f8f9fa; font-size: 1.1em; }
+            img { max-width: 100%; height: auto; border-radius: 4px; }
+            .word-label { font-weight: bold; font-size: 1.2em; }
+            .pos { font-weight: normal; color: #666; font-size: 0.8em; }
+            .attention-cell { width: 250px; }
+            .attention-bar-container { display: flex; flex-direction: column; gap: 4px; }
+            .bar-row { display: flex; align-items: center; gap: 5px; font-size: 0.8em; }
+            .bar-label { width: 50px; text-align: right; }
+            .bar { height: 12px; border-radius: 3px; border: 1px solid #eee; }
+            .bar-value { font-family: monospace; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Transformer Block Flow Visualization</h1>
+            <p><strong>Model:</strong> knock_6_1_36_words<br><strong>Probe Sentence:</strong> "knock knock whos there bob"</p>
+            <h2>Each row shows a word's journey through the first transformer block.</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Word</th>
+                        <th>Input (x)</th><th>After LN1</th><th>Query (q)</th><th>Key (k)</th><th>Value (v)</th><th>Attn Out (z)</th><th>Attention</th><th>Attn Proj</th><th>After Resid1</th><th>After LN2</th><th>MLP Out</th><th>Block Output</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td class='word-label'>'knock' <span class='pos'>(pos 0)</span></td><td><img src='knock_0_Input_x.png' title='Input (x)' loading='lazy'></td><td><img src='knock_0_After_LN1.png' title='After LN1' loading='lazy'></td><td><img src='knock_0_Query_q.png' title='Query (q)' loading='lazy'></td><td><img src='knock_0_Key_k.png' title='Key (k)' loading='lazy'></td><td><img src='knock_0_Value_v.png' title='Value (v)' loading='lazy'></td><td><img src='knock_0_Attn_Out_z.png' title='Attn Out (z)' loading='lazy'></td><td class='attention-cell'><div class='attention-bar-container'>
+                        <div class="bar-row">
+                            <span class="bar-label">knock</span>
+                            <div class="bar" style="width: 15.259900675657533px; background-color: rgba(75, 192, 192, 0.38149751689143835);"></div>
+                            <span class="bar-value">0.076</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">knock</span>
+                            <div class="bar" style="width: 10.158181843831239px; background-color: rgba(75, 192, 192, 0.253954546095781);"></div>
+                            <span class="bar-value">0.051</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">whos</span>
+                            <div class="bar" style="width: 38.90939656160361px; background-color: rgba(75, 192, 192, 0.9727349140400903);"></div>
+                            <span class="bar-value">0.195</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">there</span>
+                            <div class="bar" style="width: 49.366495914537495px; background-color: rgba(75, 192, 192, 1.2341623978634373);"></div>
+                            <span class="bar-value">0.247</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">bob</span>
+                            <div class="bar" style="width: 86.30602500437013px; background-color: rgba(75, 192, 192, 2.157650625109253);"></div>
+                            <span class="bar-value">0.432</span>
+                        </div>
+                    </div></td><td><img src='knock_0_Attn_Proj.png' title='Attn Proj' loading='lazy'></td><td><img src='knock_0_After_Resid1.png' title='After Resid1' loading='lazy'></td><td><img src='knock_0_After_LN2.png' title='After LN2' loading='lazy'></td><td><img src='knock_0_MLP_Out.png' title='MLP Out' loading='lazy'></td><td><img src='knock_0_Block_Output.png' title='Block Output' loading='lazy'></td></tr><tr><td class='word-label'>'knock' <span class='pos'>(pos 1)</span></td><td><img src='knock_1_Input_x.png' title='Input (x)' loading='lazy'></td><td><img src='knock_1_After_LN1.png' title='After LN1' loading='lazy'></td><td><img src='knock_1_Query_q.png' title='Query (q)' loading='lazy'></td><td><img src='knock_1_Key_k.png' title='Key (k)' loading='lazy'></td><td><img src='knock_1_Value_v.png' title='Value (v)' loading='lazy'></td><td><img src='knock_1_Attn_Out_z.png' title='Attn Out (z)' loading='lazy'></td><td class='attention-cell'><div class='attention-bar-container'>
+                        <div class="bar-row">
+                            <span class="bar-label">knock</span>
+                            <div class="bar" style="width: 17.369047330391247px; background-color: rgba(75, 192, 192, 0.43422618325978113);"></div>
+                            <span class="bar-value">0.087</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">knock</span>
+                            <div class="bar" style="width: 10.014320206822443px; background-color: rgba(75, 192, 192, 0.25035800517056106);"></div>
+                            <span class="bar-value">0.050</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">whos</span>
+                            <div class="bar" style="width: 33.24759258529524px; background-color: rgba(75, 192, 192, 0.831189814632381);"></div>
+                            <span class="bar-value">0.166</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">there</span>
+                            <div class="bar" style="width: 55.94981932177567px; background-color: rgba(75, 192, 192, 1.398745483044392);"></div>
+                            <span class="bar-value">0.280</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">bob</span>
+                            <div class="bar" style="width: 83.41922055571538px; background-color: rgba(75, 192, 192, 2.0854805138928847);"></div>
+                            <span class="bar-value">0.417</span>
+                        </div>
+                    </div></td><td><img src='knock_1_Attn_Proj.png' title='Attn Proj' loading='lazy'></td><td><img src='knock_1_After_Resid1.png' title='After Resid1' loading='lazy'></td><td><img src='knock_1_After_LN2.png' title='After LN2' loading='lazy'></td><td><img src='knock_1_MLP_Out.png' title='MLP Out' loading='lazy'></td><td><img src='knock_1_Block_Output.png' title='Block Output' loading='lazy'></td></tr><tr><td class='word-label'>'whos' <span class='pos'>(pos 2)</span></td><td><img src='whos_2_Input_x.png' title='Input (x)' loading='lazy'></td><td><img src='whos_2_After_LN1.png' title='After LN1' loading='lazy'></td><td><img src='whos_2_Query_q.png' title='Query (q)' loading='lazy'></td><td><img src='whos_2_Key_k.png' title='Key (k)' loading='lazy'></td><td><img src='whos_2_Value_v.png' title='Value (v)' loading='lazy'></td><td><img src='whos_2_Attn_Out_z.png' title='Attn Out (z)' loading='lazy'></td><td class='attention-cell'><div class='attention-bar-container'>
+                        <div class="bar-row">
+                            <span class="bar-label">knock</span>
+                            <div class="bar" style="width: 14.677926789875329px; background-color: rgba(75, 192, 192, 0.3669481697468832);"></div>
+                            <span class="bar-value">0.073</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">knock</span>
+                            <div class="bar" style="width: 9.777913313676407px; background-color: rgba(75, 192, 192, 0.24444783284191018);"></div>
+                            <span class="bar-value">0.049</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">whos</span>
+                            <div class="bar" style="width: 31.84841611372582px; background-color: rgba(75, 192, 192, 0.7962104028431455);"></div>
+                            <span class="bar-value">0.159</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">there</span>
+                            <div class="bar" style="width: 58.34302965014905px; background-color: rgba(75, 192, 192, 1.4585757412537261);"></div>
+                            <span class="bar-value">0.292</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">bob</span>
+                            <div class="bar" style="width: 85.3527141325734px; background-color: rgba(75, 192, 192, 2.133817853314335);"></div>
+                            <span class="bar-value">0.427</span>
+                        </div>
+                    </div></td><td><img src='whos_2_Attn_Proj.png' title='Attn Proj' loading='lazy'></td><td><img src='whos_2_After_Resid1.png' title='After Resid1' loading='lazy'></td><td><img src='whos_2_After_LN2.png' title='After LN2' loading='lazy'></td><td><img src='whos_2_MLP_Out.png' title='MLP Out' loading='lazy'></td><td><img src='whos_2_Block_Output.png' title='Block Output' loading='lazy'></td></tr><tr><td class='word-label'>'there' <span class='pos'>(pos 3)</span></td><td><img src='there_3_Input_x.png' title='Input (x)' loading='lazy'></td><td><img src='there_3_After_LN1.png' title='After LN1' loading='lazy'></td><td><img src='there_3_Query_q.png' title='Query (q)' loading='lazy'></td><td><img src='there_3_Key_k.png' title='Key (k)' loading='lazy'></td><td><img src='there_3_Value_v.png' title='Value (v)' loading='lazy'></td><td><img src='there_3_Attn_Out_z.png' title='Attn Out (z)' loading='lazy'></td><td class='attention-cell'><div class='attention-bar-container'>
+                        <div class="bar-row">
+                            <span class="bar-label">knock</span>
+                            <div class="bar" style="width: 10.445920228864509px; background-color: rgba(75, 192, 192, 0.2611480057216127);"></div>
+                            <span class="bar-value">0.052</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">knock</span>
+                            <div class="bar" style="width: 6.55825974417804px; background-color: rgba(75, 192, 192, 0.163956493604451);"></div>
+                            <span class="bar-value">0.033</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">whos</span>
+                            <div class="bar" style="width: 40.778099564506px; background-color: rgba(75, 192, 192, 1.01945248911265);"></div>
+                            <span class="bar-value">0.204</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">there</span>
+                            <div class="bar" style="width: 31.206148968826007px; background-color: rgba(75, 192, 192, 0.7801537242206502);"></div>
+                            <span class="bar-value">0.156</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">bob</span>
+                            <div class="bar" style="width: 111.01157149362547px; background-color: rgba(75, 192, 192, 2.7752892873406365);"></div>
+                            <span class="bar-value">0.555</span>
+                        </div>
+                    </div></td><td><img src='there_3_Attn_Proj.png' title='Attn Proj' loading='lazy'></td><td><img src='there_3_After_Resid1.png' title='After Resid1' loading='lazy'></td><td><img src='there_3_After_LN2.png' title='After LN2' loading='lazy'></td><td><img src='there_3_MLP_Out.png' title='MLP Out' loading='lazy'></td><td><img src='there_3_Block_Output.png' title='Block Output' loading='lazy'></td></tr><tr><td class='word-label'>'bob' <span class='pos'>(pos 4)</span></td><td><img src='bob_4_Input_x.png' title='Input (x)' loading='lazy'></td><td><img src='bob_4_After_LN1.png' title='After LN1' loading='lazy'></td><td><img src='bob_4_Query_q.png' title='Query (q)' loading='lazy'></td><td><img src='bob_4_Key_k.png' title='Key (k)' loading='lazy'></td><td><img src='bob_4_Value_v.png' title='Value (v)' loading='lazy'></td><td><img src='bob_4_Attn_Out_z.png' title='Attn Out (z)' loading='lazy'></td><td class='attention-cell'><div class='attention-bar-container'>
+                        <div class="bar-row">
+                            <span class="bar-label">knock</span>
+                            <div class="bar" style="width: 29.36320515320255px; background-color: rgba(75, 192, 192, 0.7340801288300637);"></div>
+                            <span class="bar-value">0.147</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">knock</span>
+                            <div class="bar" style="width: 27.786793721450454px; background-color: rgba(75, 192, 192, 0.6946698430362613);"></div>
+                            <span class="bar-value">0.139</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">whos</span>
+                            <div class="bar" style="width: 42.893861356573545px; background-color: rgba(75, 192, 192, 1.0723465339143388);"></div>
+                            <span class="bar-value">0.214</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">there</span>
+                            <div class="bar" style="width: 40.28181727809189px; background-color: rgba(75, 192, 192, 1.0070454319522972);"></div>
+                            <span class="bar-value">0.201</span>
+                        </div>
+                    
+                        <div class="bar-row">
+                            <span class="bar-label">bob</span>
+                            <div class="bar" style="width: 59.67432249068156px; background-color: rgba(75, 192, 192, 1.4918580622670392);"></div>
+                            <span class="bar-value">0.298</span>
+                        </div>
+                    </div></td><td><img src='bob_4_Attn_Proj.png' title='Attn Proj' loading='lazy'></td><td><img src='bob_4_After_Resid1.png' title='After Resid1' loading='lazy'></td><td><img src='bob_4_After_LN2.png' title='After LN2' loading='lazy'></td><td><img src='bob_4_MLP_Out.png' title='MLP Out' loading='lazy'></td><td><img src='bob_4_Block_Output.png' title='Block Output' loading='lazy'></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </body>
+    </html>
+    

@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attention Visualizations - Layer 0 - knock_6_1_36_words</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2em;
+        }
+        .header p {
+            margin: 5px 0;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .qkv-tabs {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .qkv-tab-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }
+        .qkv-tab-btn {
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            color: #495057;
+            padding: 15px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+            min-width: 150px;
+        }
+        .qkv-tab-btn:hover {
+            background: #e9ecef;
+            border-color: #adb5bd;
+        }
+        .qkv-tab-btn.active {
+            background: #e74c3c;
+            border-color: #e74c3c;
+            color: white;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .dimension-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
+        .dimension-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .dimension-card img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+        }
+        .dimension-card .info {
+            padding: 15px;
+            text-align: center;
+        }
+        .dimension-card .info h3 {
+            margin: 0 0 5px 0;
+            color: #333;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            max-width: 90%;
+            max-height: 90%;
+            overflow: auto;
+            position: relative;
+        }
+        .modal .close {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            color: #666;
+            font-size: 30px;
+            cursor: pointer;
+            z-index: 1001;
+        }
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            background: #f8f9fa;
+        }
+        .modal-body {
+            padding: 20px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .modal-image {
+            flex: 1;
+            min-width: 300px;
+        }
+        .modal-image img {
+            width: 100%;
+            border-radius: 4px;
+        }
+        .modal-data {
+            flex: 1;
+            min-width: 300px;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        .data-table th {
+            background: #e74c3c;
+            color: white;
+            padding: 10px;
+            text-align: left;
+        }
+        .data-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .data-table .positive {
+            color: #000;
+        }
+        .data-table .negative {
+            color: #CC0000;
+        }
+        .data-section {
+            margin-bottom: 20px;
+        }
+        .data-section h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .button-group {
+            margin: 10px 0;
+            text-align: center;
+        }
+        .button-group button {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            margin: 0 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .button-group button:hover {
+            background: #c0392b;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        .stat-card .value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        .info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .qkv-section {
+            display: none;
+        }
+        .qkv-section.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Q/K/V Attention Visualizations</h1>
+            <p><strong>Model:</strong> knock_6_1_36_words</p>
+            <p><strong>Layer:</strong> 0</p>
+            <p><strong>Embedding Dimensions:</strong> 36</p>
+        </div>
+
+        <div class="content">
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>Attention Layer</h3>
+                    <div class="value">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Dimensions</h3>
+                    <div class="value">36</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Q/K/V Spaces</h3>
+                    <div class="value">3</div>
+                </div>
+            </div>
+
+            <div class="info">
+                <h3>Understanding Q/K/V Transformations</h3>
+                <p>These visualizations show how token embeddings are transformed into attention spaces:</p>
+                <ul>
+                    <li><strong>Query (Q):</strong> How words "ask" - what information they seek from other positions</li>
+                    <li><strong>Key (K):</strong> How words "advertise" - what information they offer to be attended to</li>
+                    <li><strong>Value (V):</strong> How words "contribute" - what information they provide when attended to</li>
+                </ul>
+                <p><strong>Key insight:</strong> Each Q/K/V dimension represents a different "type" of attention relationship learned during training.</p>
+            </div>
+
+            <div class="qkv-tabs">
+                <h3>Attention Space:</h3>
+                <div class="qkv-tab-buttons">
+                    <button class="qkv-tab-btn active" onclick="showQKV('query')">Query (Q)</button>
+                    <button class="qkv-tab-btn" onclick="showQKV('key')">Key (K)</button>
+                    <button class="qkv-tab-btn" onclick="showQKV('value')">Value (V)</button>
+                </div>
+            </div>
+
+            <div class="qkv-section active" id="query-section">
+                <h2>Query Dimensions</h2>
+                <p>Click on any dimension to view the query wordmap and exact transformation values</p>
+                <div class="grid" id="query-grid"></div>
+            </div>
+
+            <div class="qkv-section" id="key-section">
+                <h2>Key Dimensions</h2>
+                <p>Click on any dimension to view the key wordmap and exact transformation values</p>
+                <div class="grid" id="key-grid"></div>
+            </div>
+
+            <div class="qkv-section" id="value-section">
+                <h2>Value Dimensions</h2>
+                <p>Click on any dimension to view the value wordmap and exact transformation values</p>
+                <div class="grid" id="value-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <div class="modal-header">
+                <h2 id="modal-title">Dimension X</h2>
+                <div class="button-group">
+                    <button onclick="showSection('image')">Wordmap</button>
+                    <button onclick="showSection('data')">Exact Values</button>
+                    <button onclick="showSection('both')">Both</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="modal-image" id="modal-image-section">
+                    <img id="modal-img" src="" alt="">
+                </div>
+                <div class="modal-data" id="modal-data-section">
+                    <div class="data-section">
+                        <h4>Highest Positive Values</h4>
+                        <table class="data-table" id="positive-table">
+                            <thead>
+                                <tr><th>Word</th><th>Value</th><th>Token Index</th></tr>
+                            </thead>
+                            <tbody id="positive-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="data-section">
+                        <h4>Most Negative Values</h4>
+                        <table class="data-table" id="negative-table">
+                            <thead>
+                                <tr><th>Word</th><th>Value</th><th>Token Index</th></tr>
+                            </thead>
+                            <tbody id="negative-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dimensionData = {"query": {"0": {"positive": [{"word": "lose", "value": 0.10867305099964142, "index": 4524}, {"word": "bite", "value": 0.09137433022260666, "index": 747}, {"word": "your", "value": 0.08934442698955536, "index": 8346}, {"word": "shoot", "value": 0.08908205479383469, "index": 6693}, {"word": "strike", "value": 0.08770519495010376, "index": 7289}, {"word": "beat", "value": 0.08769199252128601, "index": 591}, {"word": "stop", "value": 0.08748999983072281, "index": 7245}, {"word": "lead", "value": 0.08577181398868561, "index": 4325}, {"word": "kick", "value": 0.08566375821828842, "index": 4160}, {"word": "service", "value": 0.08445612341165543, "index": 6581}, {"word": "you", "value": 0.08432130515575409, "index": 8342}, {"word": "yourself", "value": 0.08282078057527542, "index": 8351}, {"word": "raise", "value": 0.08240529149770737, "index": 5982}, {"word": "had", "value": 0.08199896663427353, "index": 3404}, {"word": "pieces", "value": 0.08106021583080292, "index": 5537}, {"word": "dont", "value": 0.0810365304350853, "index": 2209}, {"word": "show", "value": 0.08100278675556183, "index": 6721}, {"word": "serve", "value": 0.08100070059299469, "index": 6578}, {"word": "lets", "value": 0.08047903329133987, "index": 4379}, {"word": "gear", "value": 0.08014144003391266, "index": 3101}, {"word": "pick", "value": 0.07994537800550461, "index": 5523}, {"word": "place", "value": 0.07968635857105255, "index": 5591}, {"word": "stay", "value": 0.0796419233083725, "index": 7185}, {"word": "let", "value": 0.07908008247613907, "index": 4378}, {"word": "drive", "value": 0.07899200171232224, "index": 2295}, {"word": "black", "value": 0.07893086224794388, "index": 756}, {"word": "hands", "value": 0.0788886621594429, "index": 3437}, {"word": "been", "value": 0.0786280557513237, "index": 618}, {"word": "swing", "value": 0.07775376737117767, "index": 7435}, {"word": "makes", "value": 0.07752656936645508, "index": 4602}], "negative": [{"word": "for", "value": -0.020333120599389076, "index": 2916}, {"word": "on", "value": -0.012098552659153938, "index": 5215}, {"word": "of", "value": -0.00978611595928669, "index": 5179}, {"word": "in", "value": -0.0046571772545576096, "index": 3879}, {"word": "out", "value": -0.001830782275646925, "index": 5284}]}, "1": {"positive": [{"word": "cows", "value": 0.1499532014131546, "index": 1727}, {"word": "til", "value": 0.148826465010643, "index": 7676}, {"word": "unpleasantness", "value": 0.14765343070030212, "index": 7921}, {"word": "tis", "value": 0.14724546670913696, "index": 7702}, {"word": "gowk", "value": 0.14685818552970886, "index": 3259}, {"word": "cancer", "value": 0.14578619599342346, "index": 1166}, {"word": "capful", "value": 0.1455972045660019, "index": 1181}, {"word": "mercys", "value": 0.14543034136295319, "index": 4732}, {"word": "swamp", "value": 0.14527836441993713, "index": 7406}, {"word": "batter", "value": 0.1450710892677307, "index": 559}, {"word": "extinguisher", "value": 0.14504212141036987, "index": 2593}, {"word": "plumbing", "value": 0.14500969648361206, "index": 5637}, {"word": "bilge", "value": 0.14496198296546936, "index": 728}, {"word": "cheerful", "value": 0.14476202428340912, "index": 1322}, {"word": "shapes", "value": 0.144741952419281, "index": 6628}, {"word": "superiority", "value": 0.14453856647014618, "index": 7378}, {"word": "prisms", "value": 0.14446522295475006, "index": 5787}, {"word": "pretension", "value": 0.14444808661937714, "index": 5765}, {"word": "duties", "value": 0.14442317187786102, "index": 2354}, {"word": "lowered", "value": 0.14429503679275513, "index": 4548}, {"word": "thrills", "value": 0.1442214399576187, "index": 7639}, {"word": "flagrante", "value": 0.1440282166004181, "index": 2811}, {"word": "dynamite", "value": 0.1440124660730362, "index": 2360}, {"word": "wily", "value": 0.1438819020986557, "index": 8203}, {"word": "hideandgoseek", "value": 0.1438625454902649, "index": 3613}, {"word": "penalty", "value": 0.1438232809305191, "index": 5468}, {"word": "isare", "value": 0.14372152090072632, "index": 3981}, {"word": "introduction", "value": 0.14371827244758606, "index": 3960}, {"word": "diving", "value": 0.143630713224411, "index": 2169}, {"word": "rhetoric", "value": 0.14360564947128296, "index": 6200}], "negative": [{"word": "<|endoftext|>", "value": -0.015303138643503189, "index": 16}, {"word": "who", "value": -0.013665059581398964, "index": 8171}, {"word": "something", "value": -0.0008293963619507849, "index": 6989}]}, "2": {"positive": [], "negative": [{"word": "tantrum", "value": -0.2462535798549652, "index": 7503}, {"word": "recovery", "value": -0.2457362562417984, "index": 6080}, {"word": "immediate", "value": -0.24533089995384216, "index": 3866}, {"word": "byebyes", "value": -0.24486957490444183, "index": 1120}, {"word": "gel", "value": -0.2448253333568573, "index": 3104}, {"word": "saucers", "value": -0.24470598995685577, "index": 6437}, {"word": "smithereens", "value": -0.24467621743679047, "index": 6907}, {"word": "ninepins", "value": -0.24465513229370117, "index": 5071}, {"word": "pegged", "value": -0.24436381459236145, "index": 5463}, {"word": "cheerful", "value": -0.24424196779727936, "index": 1322}, {"word": "guessing", "value": -0.2442179024219513, "index": 3369}, {"word": "seriously", "value": -0.2441251277923584, "index": 6575}, {"word": "sizes", "value": -0.2440185397863388, "index": 6808}, {"word": "tiddlers", "value": -0.24391157925128937, "index": 7666}, {"word": "shitless", "value": -0.24355612695217133, "index": 6676}, {"word": "grata", "value": -0.2434459626674652, "index": 3290}, {"word": "mentioning", "value": -0.24333712458610535, "index": 4727}, {"word": "57", "value": -0.2432681918144226, "index": 14}, {"word": "batty", "value": -0.24314402043819427, "index": 567}, {"word": "earthground", "value": -0.24304965138435364, "index": 2380}, {"word": "grinnin", "value": -0.24301739037036896, "index": 3327}, {"word": "cocoa", "value": -0.24294699728488922, "index": 1514}, {"word": "overtime", "value": -0.24288667738437653, "index": 5313}, {"word": "gown", "value": -0.24288497865200043, "index": 3260}, {"word": "bananas", "value": -0.24258333444595337, "index": 503}, {"word": "write", "value": -0.242527574300766, "index": 8301}, {"word": "overnight", "value": -0.24248634278774261, "index": 5305}, {"word": "dearly", "value": -0.24241259694099426, "index": 1958}, {"word": "albert", "value": -0.24238786101341248, "index": 172}, {"word": "chattels", "value": -0.24224521219730377, "index": 1303}]}, "3": {"positive": [{"word": "so", "value": 0.04058326780796051, "index": 6949}, {"word": "clear", "value": 0.03642548248171806, "index": 1445}, {"word": "tell", "value": 0.03552709147334099, "index": 7547}, {"word": "close", "value": 0.03532016649842262, "index": 1468}, {"word": "much", "value": 0.03234151005744934, "index": 4926}, {"word": "going", "value": 0.028091268613934517, "index": 3214}, {"word": "say", "value": 0.027692632749676704, "index": 6446}, {"word": "catch", "value": 0.02606036886572838, "index": 1225}, {"word": "clean", "value": 0.025632930919528008, "index": 1442}, {"word": "gone", "value": 0.02448878437280655, "index": 3223}, {"word": "draw", "value": 0.02439224347472191, "index": 2271}, {"word": "call", "value": 0.023943064734339714, "index": 1148}, {"word": "bust", "value": 0.023504270240664482, "index": 1093}, {"word": "roll", "value": 0.02317303791642189, "index": 6288}, {"word": "hot", "value": 0.022400496527552605, "index": 3754}, {"word": "leave", "value": 0.021460779011249542, "index": 4344}, {"word": "shut", "value": 0.021375101059675217, "index": 6743}, {"word": "slip", "value": 0.020490705966949463, "index": 6872}, {"word": "strike", "value": 0.02029193565249443, "index": 7289}, {"word": "thanks", "value": 0.020111266523599625, "index": 7576}, {"word": "saying", "value": 0.018902847543358803, "index": 6447}, {"word": "pitch", "value": 0.01840461976826191, "index": 5577}, {"word": "burn", "value": 0.01814207434654236, "index": 1071}, {"word": "laugh", "value": 0.018033454194664955, "index": 4299}, {"word": "know", "value": 0.017557773739099503, "index": 4232}, {"word": "life", "value": 0.01683466136455536, "index": 4403}, {"word": "on", "value": 0.016461824998259544, "index": 5215}, {"word": "stop", "value": 0.016440540552139282, "index": 7245}, {"word": "lie", "value": 0.016145853325724602, "index": 4398}, {"word": "read", "value": 0.015765564516186714, "index": 6037}], "negative": [{"word": "dont", "value": -0.05043979361653328, "index": 2209}, {"word": "whos", "value": -0.048228755593299866, "index": 8178}, {"word": "as", "value": -0.043212614953517914, "index": 345}, {"word": "and", "value": -0.04171157255768776, "index": 234}, {"word": "come", "value": -0.04098095744848251, "index": 1542}, {"word": "every", "value": -0.040365319699048996, "index": 2542}, {"word": "head", "value": -0.040358927100896835, "index": 3524}, {"word": "have", "value": -0.03939905762672424, "index": 3501}, {"word": "at", "value": -0.039328914135694504, "index": 375}, {"word": "give", "value": -0.03926398605108261, "index": 3150}, {"word": "i", "value": -0.03870106488466263, "index": 3834}, {"word": "ones", "value": -0.03748250752687454, "index": 5226}, {"word": "are", "value": -0.0369558185338974, "index": 309}, {"word": "get", "value": -0.03623930737376213, "index": 3119}, {"word": "bat", "value": -0.03615093231201172, "index": 551}, {"word": "knock", "value": -0.03580225259065628, "index": 4223}, {"word": "is", "value": -0.035542428493499756, "index": 3980}, {"word": "from", "value": -0.035272128880023956, "index": 3002}, {"word": "glad", "value": -0.03513263911008835, "index": 3160}, {"word": "or", "value": -0.03445882350206375, "index": 5263}, {"word": "start", "value": -0.034184057265520096, "index": 7171}, {"word": "pants", "value": -0.03416942059993744, "index": 5367}, {"word": "screw", "value": -0.03412246331572533, "index": 6503}, {"word": "before", "value": -0.03345945477485657, "index": 629}, {"word": "seams", "value": -0.033151961863040924, "index": 6519}, {"word": "ive", "value": -0.03304601460695267, "index": 4009}, {"word": "fall", "value": -0.0330074280500412, "index": 2638}, {"word": "bill", "value": -0.032929979264736176, "index": 730}, {"word": "tide", "value": -0.03288707509636879, "index": 7667}, {"word": "guts", "value": -0.032679829746484756, "index": 3392}]}, "4": {"positive": [{"word": "cows", "value": 0.13988396525382996, "index": 1727}, {"word": "til", "value": 0.13880954682826996, "index": 7676}, {"word": "unpleasantness", "value": 0.13748355209827423, "index": 7921}, {"word": "tis", "value": 0.1364336609840393, "index": 7702}, {"word": "linestand", "value": 0.1341879665851593, "index": 4435}, {"word": "rhetoric", "value": 0.13359186053276062, "index": 6200}, {"word": "dodgy", "value": 0.13350647687911987, "index": 2181}, {"word": "broker", "value": 0.13338905572891235, "index": 994}, {"word": "vessel", "value": 0.1333855390548706, "index": 7990}, {"word": "shredded", "value": 0.13319899141788483, "index": 6729}, {"word": "twilight", "value": 0.13302066922187805, "index": 7876}, {"word": "batter", "value": 0.13301615417003632, "index": 559}, {"word": "hideandseek", "value": 0.13290119171142578, "index": 3614}, {"word": "hideandgoseek", "value": 0.13265235722064972, "index": 3613}, {"word": "nettle", "value": 0.13261069357395172, "index": 5042}, {"word": "despond", "value": 0.13259990513324738, "index": 2041}, {"word": "clotheshorse", "value": 0.1325487643480301, "index": 1476}, {"word": "mobbrigade", "value": 0.13248340785503387, "index": 4836}, {"word": "plumbing", "value": 0.13246622681617737, "index": 5637}, {"word": "lowered", "value": 0.13244570791721344, "index": 4548}, {"word": "flapping", "value": 0.1323627531528473, "index": 2819}, {"word": "unsaid", "value": 0.13233822584152222, "index": 7922}, {"word": "vegemite", "value": 0.1323363184928894, "index": 7975}, {"word": "capful", "value": 0.1322590857744217, "index": 1181}, {"word": "rogers", "value": 0.13220475614070892, "index": 6284}, {"word": "mercys", "value": 0.13218258321285248, "index": 4732}, {"word": "rattles", "value": 0.1321825385093689, "index": 6019}, {"word": "riser", "value": 0.1320665180683136, "index": 6250}, {"word": "opinions", "value": 0.13203920423984528, "index": 5255}, {"word": "pretension", "value": 0.1320115327835083, "index": 5765}], "negative": [{"word": "put", "value": -0.05722635239362717, "index": 5891}, {"word": "make", "value": -0.0563168004155159, "index": 4599}, {"word": "kick", "value": -0.055809907615184784, "index": 4160}, {"word": "cast", "value": -0.049931660294532776, "index": 1217}, {"word": "who", "value": -0.04822831600904465, "index": 8171}, {"word": "have", "value": -0.04755883663892746, "index": 3501}, {"word": "little", "value": -0.043241556733846664, "index": 4460}, {"word": "i", "value": -0.042874276638031006, "index": 3834}, {"word": "dont", "value": -0.04254928603768349, "index": 2209}, {"word": "had", "value": -0.03964312747120857, "index": 3404}, {"word": "yourself", "value": -0.03663231432437897, "index": 8351}, {"word": "lose", "value": -0.03538348898291588, "index": 4524}, {"word": "somebody", "value": -0.03494741767644882, "index": 6982}, {"word": "something", "value": -0.034706924110651016, "index": 6989}, {"word": "someone", "value": -0.03393537551164627, "index": 6986}, {"word": "let", "value": -0.03261259198188782, "index": 4378}, {"word": "play", "value": -0.032328858971595764, "index": 5609}, {"word": "come", "value": -0.03189249336719513, "index": 1542}, {"word": "get", "value": -0.03166843578219414, "index": 3119}, {"word": "<|endoftext|>", "value": -0.03163417801260948, "index": 16}, {"word": "place", "value": -0.030542535707354546, "index": 5591}, {"word": "pick", "value": -0.02891034446656704, "index": 5523}, {"word": "face", "value": -0.028822854161262512, "index": 2611}, {"word": "pants", "value": -0.028424490243196487, "index": 5367}, {"word": "pay", "value": -0.027528051286935806, "index": 5429}, {"word": "bring", "value": -0.02743731066584587, "index": 980}, {"word": "raise", "value": -0.02710704132914543, "index": 5982}, {"word": "your", "value": -0.02692391909658909, "index": 8346}, {"word": "a", "value": -0.02583882585167885, "index": 17}, {"word": "living", "value": -0.025007620453834534, "index": 4468}]}}, "key": {"0": {"positive": [{"word": "<|endoftext|>", "value": 0.055930737406015396, "index": 16}, {"word": "be", "value": 0.048671938478946686, "index": 572}, {"word": "nothing", "value": 0.04196590185165405, "index": 5120}, {"word": "not", "value": 0.038790516555309296, "index": 5113}, {"word": "run", "value": 0.03798482194542885, "index": 6358}, {"word": "know", "value": 0.035424601286649704, "index": 4232}, {"word": "lay", "value": 0.03526028245687485, "index": 4314}, {"word": "thats", "value": 0.034355491399765015, "index": 7581}, {"word": "who", "value": 0.03321406990289688, "index": 8171}, {"word": "for", "value": 0.03136223182082176, "index": 2916}, {"word": "bill", "value": 0.031204190105199814, "index": 730}, {"word": "drop", "value": 0.030535049736499786, "index": 2302}, {"word": "lie", "value": 0.030171459540724754, "index": 4398}, {"word": "land", "value": 0.030068853870034218, "index": 4272}, {"word": "made", "value": 0.029539383947849274, "index": 4584}, {"word": "crack", "value": 0.02861214429140091, "index": 1732}, {"word": "out", "value": 0.027879975736141205, "index": 5284}, {"word": "piece", "value": 0.026873869821429253, "index": 5536}, {"word": "long", "value": 0.026822872459888458, "index": 4502}, {"word": "man", "value": 0.025363044813275337, "index": 4610}, {"word": "call", "value": 0.023433025926351547, "index": 1148}, {"word": "on", "value": 0.022597113624215126, "index": 5215}, {"word": "much", "value": 0.022550905123353004, "index": 4926}, {"word": "scene", "value": 0.0223852451890707, "index": 6465}, {"word": "dream", "value": 0.021966880187392235, "index": 2278}, {"word": "matter", "value": 0.021896401420235634, "index": 4673}, {"word": "go", "value": 0.02171413041651249, "index": 3195}, {"word": "look", "value": 0.02162295952439308, "index": 4505}, {"word": "set", "value": 0.021621273830533028, "index": 6582}, {"word": "gills", "value": 0.020412838086485863, "index": 3139}], "negative": [{"word": "your", "value": -0.056271761655807495, "index": 8346}, {"word": "place", "value": -0.049748845398426056, "index": 5591}, {"word": "strike", "value": -0.04795518517494202, "index": 7289}, {"word": "an", "value": -0.04748527333140373, "index": 230}, {"word": "gear", "value": -0.04598589614033699, "index": 3101}, {"word": "mode", "value": -0.04593246430158615, "index": 4841}, {"word": "act", "value": -0.045270293951034546, "index": 80}, {"word": "scissors", "value": -0.045006535947322845, "index": 6477}, {"word": "ridicule", "value": -0.04471445083618164, "index": 6221}, {"word": "halfcocked", "value": -0.04451948031783104, "index": 3417}, {"word": "takeoff", "value": -0.04441637173295021, "index": 7479}, {"word": "dominoes", "value": -0.04430190473794937, "index": 2203}, {"word": "private", "value": -0.0442742258310318, "index": 5791}, {"word": "extreme", "value": -0.04414067417383194, "index": 2595}, {"word": "fairweather", "value": -0.043961163610219955, "index": 2630}, {"word": "expectations", "value": -0.043933842331171036, "index": 2580}, {"word": "cows", "value": -0.04391932860016823, "index": 1727}, {"word": "halfmast", "value": -0.04387809708714485, "index": 3418}, {"word": "circuses", "value": -0.04384692758321762, "index": 1419}, {"word": "metric", "value": -0.04382500424981117, "index": 4746}, {"word": "blighty", "value": -0.04373627528548241, "index": 783}, {"word": "unpleasantness", "value": -0.04343469440937042, "index": 7921}, {"word": "sharks", "value": -0.04342890903353691, "index": 6632}, {"word": "til", "value": -0.043396104127168655, "index": 7676}, {"word": "defiance", "value": -0.04339395463466644, "index": 1991}, {"word": "dribs", "value": -0.04339296370744705, "index": 2287}, {"word": "thatit", "value": -0.04335851967334747, "index": 7579}, {"word": "chaff", "value": -0.04335044324398041, "index": 1262}, {"word": "prima", "value": -0.04332737252116203, "index": 5779}, {"word": "foottoe", "value": -0.04331402853131294, "index": 2915}]}, "1": {"positive": [{"word": "cows", "value": 0.33170512318611145, "index": 1727}, {"word": "til", "value": 0.329811155796051, "index": 7676}, {"word": "unpleasantness", "value": 0.3270946741104126, "index": 7921}, {"word": "tis", "value": 0.32359710335731506, "index": 7702}, {"word": "mercys", "value": 0.3183145523071289, "index": 4732}, {"word": "plumbing", "value": 0.31596437096595764, "index": 5637}, {"word": "thickens", "value": 0.3154982626438141, "index": 7602}, {"word": "agonygloom", "value": 0.31515005230903625, "index": 144}, {"word": "shredded", "value": 0.31447646021842957, "index": 6729}, {"word": "roundabouts", "value": 0.31407177448272705, "index": 6323}, {"word": "yen", "value": 0.31391775608062744, "index": 8330}, {"word": "misters", "value": 0.3137926161289215, "index": 4823}, {"word": "holidays", "value": 0.31358107924461365, "index": 3679}, {"word": "asome", "value": 0.3135414719581604, "index": 357}, {"word": "jeff", "value": 0.3134453296661377, "index": 4040}, {"word": "prisms", "value": 0.3132030963897705, "index": 5787}, {"word": "cheerful", "value": 0.31320127844810486, "index": 1322}, {"word": "yorks", "value": 0.3131188452243805, "index": 8341}, {"word": "swamp", "value": 0.3130798637866974, "index": 7406}, {"word": "strawberry", "value": 0.31298568844795227, "index": 7271}, {"word": "roadline", "value": 0.31281420588493347, "index": 6261}, {"word": "seethink", "value": 0.31266599893569946, "index": 6542}, {"word": "mobbrigade", "value": 0.3124622106552124, "index": 4836}, {"word": "crabs", "value": 0.31237494945526123, "index": 1731}, {"word": "bilge", "value": 0.3123275339603424, "index": 728}, {"word": "dynamite", "value": 0.3120405375957489, "index": 2360}, {"word": "goliath", "value": 0.3119615614414215, "index": 3221}, {"word": "pajamas", "value": 0.3119302988052368, "index": 5351}, {"word": "twilight", "value": 0.31181231141090393, "index": 7876}, {"word": "tucker", "value": 0.3118078112602234, "index": 7856}], "negative": []}, "2": {"positive": [{"word": "cows", "value": 0.15004099905490875, "index": 1727}, {"word": "til", "value": 0.1484295129776001, "index": 7676}, {"word": "unpleasantness", "value": 0.14591264724731445, "index": 7921}, {"word": "tis", "value": 0.14317919313907623, "index": 7702}, {"word": "plumbing", "value": 0.1431225687265396, "index": 5637}, {"word": "fairweather", "value": 0.13951754570007324, "index": 2630}, {"word": "thatit", "value": 0.13912373781204224, "index": 7579}, {"word": "mercys", "value": 0.13905715942382812, "index": 4732}, {"word": "paragon", "value": 0.13881640136241913, "index": 5376}, {"word": "roundabouts", "value": 0.13865722715854645, "index": 6323}, {"word": "thrust", "value": 0.1386316865682602, "index": 7649}, {"word": "sav", "value": 0.1385456621646881, "index": 6439}, {"word": "extreme", "value": 0.13845470547676086, "index": 2595}, {"word": "dropsy", "value": 0.1384127140045166, "index": 2306}, {"word": "agonygloom", "value": 0.1383860856294632, "index": 144}, {"word": "honcho", "value": 0.13831380009651184, "index": 3695}, {"word": "blighty", "value": 0.13827821612358093, "index": 783}, {"word": "wormseye", "value": 0.13825160264968872, "index": 8274}, {"word": "softan", "value": 0.13820163905620575, "index": 6969}, {"word": "linestand", "value": 0.13810773193836212, "index": 4435}, {"word": "goliath", "value": 0.1378764510154724, "index": 3221}, {"word": "yen", "value": 0.137853741645813, "index": 8330}, {"word": "doubting", "value": 0.13775567710399628, "index": 2239}, {"word": "voting", "value": 0.1376482993364334, "index": 8026}, {"word": "liability", "value": 0.13755102455615997, "index": 4386}, {"word": "catch22", "value": 0.13742171227931976, "index": 1226}, {"word": "balances", "value": 0.13739730417728424, "index": 484}, {"word": "rec", "value": 0.13738234341144562, "index": 6061}, {"word": "defiance", "value": 0.1373581737279892, "index": 1991}, {"word": "halfmast", "value": 0.13730652630329132, "index": 3418}], "negative": [{"word": "who", "value": -0.054639317095279694, "index": 8171}, {"word": "cold", "value": -0.019874567165970802, "index": 1526}, {"word": "bite", "value": -0.018210984766483307, "index": 747}, {"word": "hard", "value": -0.016231762245297432, "index": 3458}, {"word": "come", "value": -0.015403836034238338, "index": 1542}, {"word": "lie", "value": -0.015327772125601768, "index": 4398}, {"word": "has", "value": -0.014680380932986736, "index": 3480}, {"word": "dead", "value": -0.014215362258255482, "index": 1947}, {"word": "knock", "value": -0.013915261253714561, "index": 4223}, {"word": "bird", "value": -0.01319735124707222, "index": 736}, {"word": "going", "value": -0.013152588158845901, "index": 3214}, {"word": "and", "value": -0.013152309693396091, "index": 234}, {"word": "de", "value": -0.012803605757653713, "index": 1946}, {"word": "been", "value": -0.011860450729727745, "index": 618}, {"word": "have", "value": -0.011641294695436954, "index": 3501}, {"word": "blue", "value": -0.01158968172967434, "index": 811}, {"word": "in", "value": -0.011190732941031456, "index": 3879}, {"word": "from", "value": -0.010893850587308407, "index": 3002}, {"word": "find", "value": -0.01048811711370945, "index": 2763}, {"word": "white", "value": -0.010454441420733929, "index": 8167}, {"word": "is", "value": -0.010251028463244438, "index": 3980}, {"word": "wrong", "value": -0.010103878565132618, "index": 8304}, {"word": "first", "value": -0.0097242072224617, "index": 2784}, {"word": "behind", "value": -0.009588748216629028, "index": 647}, {"word": "the", "value": -0.009473046287894249, "index": 7583}, {"word": "full", "value": -0.00943056121468544, "index": 3026}, {"word": "under", "value": -0.009219663217663765, "index": 7905}, {"word": "through", "value": -0.009212708100676537, "index": 7645}, {"word": "bit", "value": -0.00911513902246952, "index": 745}, {"word": "happy", "value": -0.008861059322953224, "index": 3453}]}, "3": {"positive": [{"word": "<|endoftext|>", "value": 0.11671572923660278, "index": 16}, {"word": "who", "value": 0.09777990728616714, "index": 8171}, {"word": "get", "value": 0.08955547213554382, "index": 3119}, {"word": "come", "value": 0.0800115242600441, "index": 1542}, {"word": "give", "value": 0.07694054394960403, "index": 3150}, {"word": "at", "value": 0.07031227648258209, "index": 375}, {"word": "dont", "value": 0.06879439949989319, "index": 2209}, {"word": "knock", "value": 0.06568928062915802, "index": 4223}, {"word": "in", "value": 0.06534664332866669, "index": 3879}, {"word": "have", "value": 0.06400658935308456, "index": 3501}, {"word": "as", "value": 0.06344772130250931, "index": 345}, {"word": "head", "value": 0.059453923255205154, "index": 3524}, {"word": "whos", "value": 0.058284319937229156, "index": 8178}, {"word": "no", "value": 0.057735346257686615, "index": 5081}, {"word": "ones", "value": 0.057358983904123306, "index": 5226}, {"word": "go", "value": 0.05578349158167839, "index": 3195}, {"word": "a", "value": 0.05457372963428497, "index": 17}, {"word": "i", "value": 0.053928665816783905, "index": 3834}, {"word": "an", "value": 0.053200311958789825, "index": 230}, {"word": "from", "value": 0.051937662065029144, "index": 3002}, {"word": "all", "value": 0.051591355353593826, "index": 185}, {"word": "and", "value": 0.05058643966913223, "index": 234}, {"word": "see", "value": 0.050254084169864655, "index": 6532}, {"word": "out", "value": 0.05008303374052048, "index": 5284}, {"word": "cut", "value": 0.04958109185099602, "index": 1864}, {"word": "into", "value": 0.04909771680831909, "index": 3957}, {"word": "be", "value": 0.04895331338047981, "index": 572}, {"word": "one", "value": 0.048123057931661606, "index": 5219}, {"word": "live", "value": 0.04812264069914818, "index": 4463}, {"word": "of", "value": 0.04790334403514862, "index": 5179}], "negative": [{"word": "cows", "value": -0.15285071730613708, "index": 1727}, {"word": "til", "value": -0.15175195038318634, "index": 7676}, {"word": "unpleasantness", "value": -0.14980877935886383, "index": 7921}, {"word": "tis", "value": -0.1461278200149536, "index": 7702}, {"word": "vegemite", "value": -0.14212334156036377, "index": 7975}, {"word": "bray", "value": -0.14106017351150513, "index": 939}, {"word": "agonygloom", "value": -0.14044301211833954, "index": 144}, {"word": "yikes", "value": -0.13939699530601501, "index": 8336}, {"word": "fella", "value": -0.13937000930309296, "index": 2719}, {"word": "seethink", "value": -0.13913077116012573, "index": 6542}, {"word": "nettle", "value": -0.13913056254386902, "index": 5042}, {"word": "broker", "value": -0.13907170295715332, "index": 994}, {"word": "thrust", "value": -0.13903161883354187, "index": 7649}, {"word": "python", "value": -0.13884243369102478, "index": 5901}, {"word": "frack", "value": -0.13880297541618347, "index": 2961}, {"word": "mercys", "value": -0.13879700005054474, "index": 4732}, {"word": "twilight", "value": -0.13862138986587524, "index": 7876}, {"word": "hurts", "value": -0.1385156661272049, "index": 3825}, {"word": "torpedoes", "value": -0.13833558559417725, "index": 7756}, {"word": "holidays", "value": -0.13800637423992157, "index": 3679}, {"word": "unsaid", "value": -0.13799285888671875, "index": 7922}, {"word": "se", "value": -0.13790246844291687, "index": 6515}, {"word": "yore", "value": -0.13784487545490265, "index": 8339}, {"word": "roadline", "value": -0.13774527609348297, "index": 6261}, {"word": "shudderdread", "value": -0.13771650195121765, "index": 6739}, {"word": "hideandseek", "value": -0.1375889629125595, "index": 3614}, {"word": "roundabouts", "value": -0.13757912814617157, "index": 6323}, {"word": "sav", "value": -0.1375146210193634, "index": 6439}, {"word": "tucker", "value": -0.13746660947799683, "index": 7856}, {"word": "chattering", "value": -0.13743506371974945, "index": 1305}]}, "4": {"positive": [{"word": "standards", "value": 0.11749636381864548, "index": 7156}, {"word": "expectations", "value": 0.11743122339248657, "index": 2580}, {"word": "papa", "value": 0.11670622229576111, "index": 5369}, {"word": "scissors", "value": 0.1165856197476387, "index": 6477}, {"word": "ridicule", "value": 0.1163293868303299, "index": 6221}, {"word": "halfcocked", "value": 0.11604943871498108, "index": 3417}, {"word": "circuses", "value": 0.11597532778978348, "index": 1419}, {"word": "chaff", "value": 0.1159728467464447, "index": 1262}, {"word": "nought", "value": 0.11590373516082764, "index": 5124}, {"word": "foottoe", "value": 0.1156468465924263, "index": 2915}, {"word": "chili", "value": 0.11524345725774765, "index": 1350}, {"word": "hughie", "value": 0.11501026898622513, "index": 3793}, {"word": "halfmast", "value": 0.11492076516151428, "index": 3418}, {"word": "nellie", "value": 0.1149139329791069, "index": 5031}, {"word": "canossa", "value": 0.11478157341480255, "index": 1172}, {"word": "durned", "value": 0.11453744769096375, "index": 2346}, {"word": "abeyance", "value": 0.11449465155601501, "index": 26}, {"word": "faux", "value": 0.11437027156352997, "index": 2685}, {"word": "jericho", "value": 0.11434458941221237, "index": 4046}, {"word": "digits", "value": 0.11434321850538254, "index": 2099}, {"word": "blighty", "value": 0.11426317691802979, "index": 783}, {"word": "lingua", "value": 0.11425308883190155, "index": 4439}, {"word": "wilding", "value": 0.11424043029546738, "index": 8196}, {"word": "sce", "value": 0.11423435062170029, "index": 6464}, {"word": "voting", "value": 0.11421839892864227, "index": 8026}, {"word": "doubting", "value": 0.1141805648803711, "index": 2239}, {"word": "swollen", "value": 0.11415959149599075, "index": 7441}, {"word": "target", "value": 0.11415861546993256, "index": 7510}, {"word": "defiance", "value": 0.11413689702749252, "index": 1991}, {"word": "extreme", "value": 0.11412927508354187, "index": 2595}], "negative": [{"word": "over", "value": -0.01141359843313694, "index": 5300}, {"word": "for", "value": -0.007059826981276274, "index": 2916}]}}, "value": {"0": {"positive": [{"word": "resemblance", "value": 0.03628067299723625, "index": 6162}, {"word": "yourtheits", "value": 0.03623698651790619, "index": 8352}, {"word": "tiddlers", "value": 0.03609408438205719, "index": 7666}, {"word": "immediate", "value": 0.03599294275045395, "index": 3866}, {"word": "persona", "value": 0.03580372408032417, "index": 5498}, {"word": "yap", "value": 0.035567719489336014, "index": 8318}, {"word": "howlike", "value": 0.035495512187480927, "index": 3780}, {"word": "poll", "value": 0.03546752408146858, "index": 5673}, {"word": "wriggle", "value": 0.03539266809821129, "index": 8294}, {"word": "residence", "value": 0.03534730151295662, "index": 6166}, {"word": "bananas", "value": 0.035298772156238556, "index": 503}, {"word": "dearly", "value": 0.03529217466711998, "index": 1958}, {"word": "batty", "value": 0.035288359969854355, "index": 567}, {"word": "shapes", "value": 0.03519657626748085, "index": 6628}, {"word": "feetheels", "value": 0.035103850066661835, "index": 2717}, {"word": "bigticket", "value": 0.035049330443143845, "index": 726}, {"word": "skis", "value": 0.034996148198843, "index": 6832}, {"word": "wilding", "value": 0.034960925579071045, "index": 8196}, {"word": "blazing", "value": 0.03494159132242203, "index": 771}, {"word": "byebyes", "value": 0.03493093326687813, "index": 1120}, {"word": "threading", "value": 0.034912534058094025, "index": 7630}, {"word": "stompies", "value": 0.03490850701928139, "index": 7236}, {"word": "bobsydie", "value": 0.034795135259628296, "index": 832}, {"word": "alongside", "value": 0.03479001298546791, "index": 206}, {"word": "shitless", "value": 0.034789472818374634, "index": 6676}, {"word": "capful", "value": 0.03469409421086311, "index": 1181}, {"word": "grinnin", "value": 0.03465893119573593, "index": 3327}, {"word": "troth", "value": 0.03463760390877724, "index": 7825}, {"word": "goodpooretc", "value": 0.034624963998794556, "index": 3235}, {"word": "glorious", "value": 0.03462068736553192, "index": 3179}], "negative": [{"word": "knock", "value": -0.012590649537742138, "index": 4223}, {"word": "say", "value": -0.0004961708909831941, "index": 6446}]}, "1": {"positive": [{"word": "cows", "value": 0.06078585982322693, "index": 1727}, {"word": "til", "value": 0.060349106788635254, "index": 7676}, {"word": "unpleasantness", "value": 0.06010209023952484, "index": 7921}, {"word": "papa", "value": 0.05910739302635193, "index": 5369}, {"word": "expectations", "value": 0.059081003069877625, "index": 2580}, {"word": "softan", "value": 0.0589594841003418, "index": 6969}, {"word": "halfmast", "value": 0.058867428451776505, "index": 3418}, {"word": "nought", "value": 0.05884318798780441, "index": 5124}, {"word": "fauna", "value": 0.05880722776055336, "index": 2682}, {"word": "charybdis", "value": 0.05880490690469742, "index": 1298}, {"word": "voting", "value": 0.0587950237095356, "index": 8026}, {"word": "jeff", "value": 0.0587841160595417, "index": 4040}, {"word": "thickens", "value": 0.05876515433192253, "index": 7602}, {"word": "liability", "value": 0.05873764678835869, "index": 4386}, {"word": "goliath", "value": 0.058734651654958725, "index": 3221}, {"word": "defiance", "value": 0.05872205272316933, "index": 1991}, {"word": "digits", "value": 0.05870768055319786, "index": 2099}, {"word": "foottoe", "value": 0.058674827218055725, "index": 2915}, {"word": "circuses", "value": 0.058658719062805176, "index": 1419}, {"word": "standards", "value": 0.05865054950118065, "index": 7156}, {"word": "doubting", "value": 0.05858685076236725, "index": 2239}, {"word": "scissors", "value": 0.05858142673969269, "index": 6477}, {"word": "butcher", "value": 0.05857133865356445, "index": 1098}, {"word": "slue", "value": 0.05855979025363922, "index": 6885}, {"word": "blighty", "value": 0.058557696640491486, "index": 783}, {"word": "plumbing", "value": 0.058508019894361496, "index": 5637}, {"word": "paragon", "value": 0.05846574530005455, "index": 5376}, {"word": "tis", "value": 0.05845547094941139, "index": 7702}, {"word": "roundabouts", "value": 0.058413438498973846, "index": 6323}, {"word": "yen", "value": 0.0583760142326355, "index": 8330}], "negative": [{"word": "to", "value": -0.010458599776029587, "index": 7710}, {"word": "<|endoftext|>", "value": -0.008788135834038258, "index": 16}, {"word": "on", "value": -0.007555685471743345, "index": 5215}, {"word": "with", "value": -0.005498937331140041, "index": 8232}, {"word": "for", "value": -0.0036672542337328196, "index": 2916}, {"word": "time", "value": -0.003551880596205592, "index": 7685}, {"word": "the", "value": -0.0018322010291740298, "index": 7583}]}, "2": {"positive": [{"word": "knock", "value": 0.004017187748104334, "index": 4223}, {"word": "from", "value": 0.00010741758160293102, "index": 3002}, {"word": "<|endoftext|>", "value": 7.738935528323054e-05, "index": 16}], "negative": [{"word": "papa", "value": -0.050591886043548584, "index": 5369}, {"word": "wilding", "value": -0.049935076385736465, "index": 8196}, {"word": "scissors", "value": -0.049708735197782516, "index": 6477}, {"word": "circuses", "value": -0.04959132522344589, "index": 1419}, {"word": "resemblance", "value": -0.049417320638895035, "index": 6162}, {"word": "nought", "value": -0.04926031455397606, "index": 5124}, {"word": "slew", "value": -0.04896010085940361, "index": 6862}, {"word": "cows", "value": -0.048903170973062515, "index": 1727}, {"word": "lone", "value": -0.04888292774558067, "index": 4499}, {"word": "stompies", "value": -0.04882790520787239, "index": 7236}, {"word": "yourtheits", "value": -0.048818185925483704, "index": 8352}, {"word": "poll", "value": -0.048770349472761154, "index": 5673}, {"word": "chaff", "value": -0.04873782396316528, "index": 1262}, {"word": "standards", "value": -0.04867848753929138, "index": 7156}, {"word": "residence", "value": -0.048655055463314056, "index": 6166}, {"word": "expectations", "value": -0.04859153926372528, "index": 2580}, {"word": "tad", "value": -0.04858004301786423, "index": 7470}, {"word": "canossa", "value": -0.04857896268367767, "index": 1172}, {"word": "fauna", "value": -0.048544108867645264, "index": 2682}, {"word": "bananas", "value": -0.04850873723626137, "index": 503}, {"word": "rift", "value": -0.04845867305994034, "index": 6224}, {"word": "shotstab", "value": -0.04845656827092171, "index": 6708}, {"word": "lingua", "value": -0.04842841997742653, "index": 4439}, {"word": "paragon", "value": -0.04838170111179352, "index": 5376}, {"word": "wriggle", "value": -0.04837812855839729, "index": 8294}, {"word": "halfcocked", "value": -0.04837809503078461, "index": 3417}, {"word": "abeyance", "value": -0.048370830714702606, "index": 26}, {"word": "gob", "value": -0.04834296554327011, "index": 3201}, {"word": "softan", "value": -0.04834138974547386, "index": 6969}, {"word": "doubting", "value": -0.04834122955799103, "index": 2239}]}, "3": {"positive": [{"word": "up", "value": 0.01998981088399887, "index": 7933}, {"word": "a", "value": 0.019210027530789375, "index": 17}, {"word": "back", "value": 0.018781296908855438, "index": 448}, {"word": "get", "value": 0.018101375550031662, "index": 3119}, {"word": "in", "value": 0.017113886773586273, "index": 3879}, {"word": "off", "value": 0.0168791264295578, "index": 5180}, {"word": "down", "value": 0.016652721911668777, "index": 2246}, {"word": "break", "value": 0.015595787204802036, "index": 945}, {"word": "out", "value": 0.015317702665925026, "index": 5284}, {"word": "feet", "value": 0.014771809801459312, "index": 2716}, {"word": "reach", "value": 0.014311645179986954, "index": 6033}, {"word": "play", "value": 0.014184233732521534, "index": 5609}, {"word": "act", "value": 0.014030936174094677, "index": 80}, {"word": "start", "value": 0.013987385667860508, "index": 7171}, {"word": "put", "value": 0.013966575264930725, "index": 5891}, {"word": "fly", "value": 0.01393873430788517, "index": 2875}, {"word": "all", "value": 0.013241559267044067, "index": 185}, {"word": "around", "value": 0.012879565358161926, "index": 327}, {"word": "lose", "value": 0.012615211308002472, "index": 4524}, {"word": "strike", "value": 0.012127949856221676, "index": 7289}, {"word": "caught", "value": 0.011956417001783848, "index": 1235}, {"word": "someone", "value": 0.011880094185471535, "index": 6986}, {"word": "into", "value": 0.011606354266405106, "index": 3957}, {"word": "pull", "value": 0.011448685079813004, "index": 5855}, {"word": "fall", "value": 0.011227189563214779, "index": 2638}, {"word": "behind", "value": 0.011221868917346, "index": 647}, {"word": "at", "value": 0.011205260641872883, "index": 375}, {"word": "cut", "value": 0.011179192923009396, "index": 1864}, {"word": "ride", "value": 0.011025878600776196, "index": 6219}, {"word": "under", "value": 0.010994800366461277, "index": 7905}], "negative": [{"word": "bill", "value": -0.014122245833277702, "index": 730}, {"word": "same", "value": -0.013299464248120785, "index": 6420}, {"word": "<|endoftext|>", "value": -0.01311415247619152, "index": 16}, {"word": "whos", "value": -0.012442744337022305, "index": 8178}, {"word": "ill", "value": -0.012345891445875168, "index": 3856}, {"word": "love", "value": -0.012202613055706024, "index": 4538}, {"word": "different", "value": -0.012027057819068432, "index": 2093}, {"word": "would", "value": -0.011163967661559582, "index": 8282}, {"word": "sing", "value": -0.010681110434234142, "index": 6784}, {"word": "long", "value": -0.010679625906050205, "index": 4502}, {"word": "fish", "value": -0.01065819151699543, "index": 2787}, {"word": "worse", "value": -0.010599855333566666, "index": 8279}, {"word": "or", "value": -0.0105051938444376, "index": 5263}, {"word": "i", "value": -0.010443623177707195, "index": 3834}, {"word": "white", "value": -0.010338460095226765, "index": 8167}, {"word": "dog", "value": -0.010221335105597973, "index": 2185}, {"word": "charmed", "value": -0.010186590254306793, "index": 1296}, {"word": "kite", "value": -0.010108621791005135, "index": 4200}, {"word": "making", "value": -0.010044138878583908, "index": 4604}, {"word": "pup", "value": -0.010040482506155968, "index": 5874}, {"word": "happy", "value": -0.009855409152805805, "index": 3453}, {"word": "sake", "value": -0.009599302895367146, "index": 6403}, {"word": "sell", "value": -0.0095432810485363, "index": 6553}, {"word": "cant", "value": -0.009419212117791176, "index": 1174}, {"word": "porcelain", "value": -0.009294013492763042, "index": 5694}, {"word": "than", "value": -0.009070617146790028, "index": 7573}, {"word": "great", "value": -0.009066155180335045, "index": 3302}, {"word": "drink", "value": -0.00887605082243681, "index": 2291}, {"word": "old", "value": -0.008815878070890903, "index": 5203}, {"word": "never", "value": -0.008734566159546375, "index": 5045}]}, "4": {"positive": [{"word": "<|endoftext|>", "value": 0.05426337569952011, "index": 16}, {"word": "something", "value": 0.020128833130002022, "index": 6989}, {"word": "one", "value": 0.01592499576508999, "index": 5219}, {"word": "time", "value": 0.01586105115711689, "index": 7685}, {"word": "line", "value": 0.01112795528024435, "index": 4431}, {"word": "resemblance", "value": 0.010056880302727222, "index": 6162}, {"word": "someone", "value": 0.0096474289894104, "index": 6986}, {"word": "papa", "value": 0.008800520561635494, "index": 5369}, {"word": "wriggle", "value": 0.008417428471148014, "index": 8294}, {"word": "wilding", "value": 0.008273175917565823, "index": 8196}, {"word": "hol", "value": 0.008108358830213547, "index": 3671}, {"word": "show", "value": 0.008024673908948898, "index": 6721}, {"word": "things", "value": 0.007999371737241745, "index": 7608}, {"word": "stompies", "value": 0.007890635170042515, "index": 7236}, {"word": "poll", "value": 0.007861289195716381, "index": 5673}, {"word": "talk", "value": 0.007601241581141949, "index": 7488}, {"word": "itstheyre", "value": 0.007597831543534994, "index": 4002}, {"word": "scissors", "value": 0.007582084275782108, "index": 6477}, {"word": "circuses", "value": 0.007572979666292667, "index": 1419}, {"word": "popular", "value": 0.00749592250213027, "index": 5693}, {"word": "laughingstock", "value": 0.007422941736876965, "index": 4302}, {"word": "residence", "value": 0.007242641877382994, "index": 6166}, {"word": "slew", "value": 0.007241622544825077, "index": 6862}, {"word": "production", "value": 0.007179095409810543, "index": 5807}, {"word": "rift", "value": 0.007050677202641964, "index": 6224}, {"word": "place", "value": 0.007034081034362316, "index": 5591}, {"word": "paragon", "value": 0.007032179739326239, "index": 5376}, {"word": "life", "value": 0.006972473580390215, "index": 4403}, {"word": "also", "value": 0.006957491394132376, "index": 210}, {"word": "canossa", "value": 0.006911777891218662, "index": 1172}], "negative": [{"word": "thats", "value": -0.030474629253149033, "index": 7581}, {"word": "has", "value": -0.02894049510359764, "index": 3480}, {"word": "like", "value": -0.02874772436916828, "index": 4420}, {"word": "buy", "value": -0.028210293501615524, "index": 1109}, {"word": "knock", "value": -0.02573094144463539, "index": 4223}, {"word": "just", "value": -0.025217819958925247, "index": 4126}, {"word": "across", "value": -0.02508249506354332, "index": 79}, {"word": "find", "value": -0.024318702518939972, "index": 2763}, {"word": "chew", "value": -0.023847561329603195, "index": 1338}, {"word": "keep", "value": -0.02383660338819027, "index": 4141}, {"word": "im", "value": -0.023548783734440804, "index": 3860}, {"word": "unto", "value": -0.023105932399630547, "index": 7928}, {"word": "among", "value": -0.022340690717101097, "index": 226}, {"word": "rails", "value": -0.022269951179623604, "index": 5974}, {"word": "below", "value": -0.021929144859313965, "index": 670}, {"word": "if", "value": -0.021859657019376755, "index": 3849}, {"word": "in", "value": -0.021571828052401543, "index": 3879}, {"word": "send", "value": -0.02145814336836338, "index": 6560}, {"word": "whats", "value": -0.021297205239534378, "index": 8137}, {"word": "take", "value": -0.021077418699860573, "index": 7476}, {"word": "as", "value": -0.021048927679657936, "index": 345}, {"word": "an", "value": -0.021015364676713943, "index": 230}, {"word": "before", "value": -0.02101421169936657, "index": 629}, {"word": "between", "value": -0.020999489352107048, "index": 708}, {"word": "onto", "value": -0.020925240591168404, "index": 5242}, {"word": "wings", "value": -0.020844483748078346, "index": 8211}, {"word": "after", "value": -0.020703831687569618, "index": 129}, {"word": "having", "value": -0.020645638927817345, "index": 3509}, {"word": "phone", "value": -0.020584944635629654, "index": 5518}, {"word": "behind", "value": -0.020552435889840126, "index": 647}]}}};
+        let currentView = 'both';
+        let currentQKV = 'query';
+
+        // Generate dimension cards for each Q/K/V type
+        function generateDimensionCards() {
+            const types = ['query', 'key', 'value'];
+
+            types.forEach(type => {
+                const grid = document.getElementById(`${type}-grid`);
+                grid.innerHTML = '';
+
+                if (dimensionData[type]) {
+                    Object.keys(dimensionData[type]).forEach(dim => {
+                        const card = document.createElement('div');
+                        card.className = 'dimension-card';
+                        card.onclick = () => openModal(type, dim);
+
+                        card.innerHTML = `
+                            <img src="${type}_dimension_${dim}.png" alt="${type} Dimension ${dim}">
+                            <div class="info">
+                                <h3>${type.charAt(0).toUpperCase() + type.slice(1)} Dimension ${dim}</h3>
+                            </div>
+                        `;
+
+                        grid.appendChild(card);
+                    });
+                }
+            });
+        }
+
+        function showQKV(type) {
+            // Hide all sections
+            document.querySelectorAll('.qkv-section').forEach(section => {
+                section.classList.remove('active');
+            });
+            document.querySelectorAll('.qkv-tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show selected section
+            document.getElementById(`${type}-section`).classList.add('active');
+            event.target.classList.add('active');
+            currentQKV = type;
+        }
+
+        function openModal(qkvType, dimension) {
+            const modal = document.getElementById('modal');
+            const modalImg = document.getElementById('modal-img');
+            const modalTitle = document.getElementById('modal-title');
+
+            modalImg.src = `${qkvType}_dimension_${dimension}.png`;
+            modalTitle.textContent = `${qkvType.charAt(0).toUpperCase() + qkvType.slice(1)} Dimension ${dimension}`;
+
+            loadDimensionData(qkvType, dimension);
+            showSection(currentView);
+            modal.style.display = 'flex';
+        }
+
+        function loadDimensionData(qkvType, dimension) {
+            const data = dimensionData[qkvType] && dimensionData[qkvType][dimension];
+            if (!data) {
+                console.log('No data for', qkvType, 'dimension', dimension);
+                return;
+            }
+
+            const positiveTbody = document.getElementById('positive-tbody');
+            const negativeTbody = document.getElementById('negative-tbody');
+
+            positiveTbody.innerHTML = '';
+            negativeTbody.innerHTML = '';
+
+            if (data.positive) {
+                data.positive.forEach(item => {
+                    const row = positiveTbody.insertRow();
+                    row.innerHTML = `<td class="positive">${item.word}</td><td class="positive">${item.value.toFixed(4)}</td><td class="positive">${item.index}</td>`;
+                });
+            }
+
+            if (data.negative) {
+                data.negative.forEach(item => {
+                    const row = negativeTbody.insertRow();
+                    row.innerHTML = `<td class="negative">${item.word}</td><td class="negative">${item.value.toFixed(4)}</td><td class="negative">${item.index}</td>`;
+                });
+            }
+        }
+
+        function showSection(section) {
+            currentView = section;
+            const imageSection = document.getElementById('modal-image-section');
+            const dataSection = document.getElementById('modal-data-section');
+
+            if (section === 'image') {
+                imageSection.style.display = 'block';
+                dataSection.style.display = 'none';
+            } else if (section === 'data') {
+                imageSection.style.display = 'none';
+                dataSection.style.display = 'block';
+            } else { // both
+                imageSection.style.display = 'block';
+                dataSection.style.display = 'block';
+            }
+        }
+
+        function closeModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        // Close modal on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
+        });
+
+        // Initialize the page
+        generateDimensionCards();
+    </script>
+</body>
+</html>

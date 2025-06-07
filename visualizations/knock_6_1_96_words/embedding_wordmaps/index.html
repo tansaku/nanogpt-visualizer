@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Embedding Visualizations - knock_6_1_96_words</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2em;
+        }
+        .header p {
+            margin: 5px 0;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .dimension-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
+        .dimension-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .dimension-card img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+        }
+        .dimension-card .info {
+            padding: 15px;
+            text-align: center;
+        }
+        .dimension-card .info h3 {
+            margin: 0 0 5px 0;
+            color: #333;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal img {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 8px;
+        }
+        .modal .close {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            color: white;
+            font-size: 30px;
+            cursor: pointer;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        .stat-card .value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Embedding Visualizations</h1>
+            <p><strong>Model:</strong> knock_6_1_96_words</p>
+            <p><strong>Vocabulary Size:</strong> 8,368 tokens</p>
+            <p><strong>Embedding Dimensions:</strong> 96</p>
+        </div>
+
+        <div class="content">
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>Vocabulary Size</h3>
+                    <div class="value">8,368</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Embedding Dimensions</h3>
+                    <div class="value">96</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Parameters</h3>
+                    <div class="value">803,328</div>
+                </div>
+            </div>
+
+            <h2>Embedding Dimensions</h2>
+            <p>Click on any dimension to view it in full screen</p>
+
+            <div class="grid">
+                <div class="dimension-card" onclick="openModal('dimension_0.png')">
+                    <img src="dimension_0.png" alt="Dimension 0">
+                    <div class="info">
+                        <h3>Dimension 0</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_1.png')">
+                    <img src="dimension_1.png" alt="Dimension 1">
+                    <div class="info">
+                        <h3>Dimension 1</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_2.png')">
+                    <img src="dimension_2.png" alt="Dimension 2">
+                    <div class="info">
+                        <h3>Dimension 2</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_3.png')">
+                    <img src="dimension_3.png" alt="Dimension 3">
+                    <div class="info">
+                        <h3>Dimension 3</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_4.png')">
+                    <img src="dimension_4.png" alt="Dimension 4">
+                    <div class="info">
+                        <h3>Dimension 4</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_5.png')">
+                    <img src="dimension_5.png" alt="Dimension 5">
+                    <div class="info">
+                        <h3>Dimension 5</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_6.png')">
+                    <img src="dimension_6.png" alt="Dimension 6">
+                    <div class="info">
+                        <h3>Dimension 6</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_7.png')">
+                    <img src="dimension_7.png" alt="Dimension 7">
+                    <div class="info">
+                        <h3>Dimension 7</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_8.png')">
+                    <img src="dimension_8.png" alt="Dimension 8">
+                    <div class="info">
+                        <h3>Dimension 8</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_9.png')">
+                    <img src="dimension_9.png" alt="Dimension 9">
+                    <div class="info">
+                        <h3>Dimension 9</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_10.png')">
+                    <img src="dimension_10.png" alt="Dimension 10">
+                    <div class="info">
+                        <h3>Dimension 10</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_11.png')">
+                    <img src="dimension_11.png" alt="Dimension 11">
+                    <div class="info">
+                        <h3>Dimension 11</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_12.png')">
+                    <img src="dimension_12.png" alt="Dimension 12">
+                    <div class="info">
+                        <h3>Dimension 12</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_13.png')">
+                    <img src="dimension_13.png" alt="Dimension 13">
+                    <div class="info">
+                        <h3>Dimension 13</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_14.png')">
+                    <img src="dimension_14.png" alt="Dimension 14">
+                    <div class="info">
+                        <h3>Dimension 14</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_15.png')">
+                    <img src="dimension_15.png" alt="Dimension 15">
+                    <div class="info">
+                        <h3>Dimension 15</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_16.png')">
+                    <img src="dimension_16.png" alt="Dimension 16">
+                    <div class="info">
+                        <h3>Dimension 16</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_17.png')">
+                    <img src="dimension_17.png" alt="Dimension 17">
+                    <div class="info">
+                        <h3>Dimension 17</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_18.png')">
+                    <img src="dimension_18.png" alt="Dimension 18">
+                    <div class="info">
+                        <h3>Dimension 18</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_19.png')">
+                    <img src="dimension_19.png" alt="Dimension 19">
+                    <div class="info">
+                        <h3>Dimension 19</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_20.png')">
+                    <img src="dimension_20.png" alt="Dimension 20">
+                    <div class="info">
+                        <h3>Dimension 20</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_21.png')">
+                    <img src="dimension_21.png" alt="Dimension 21">
+                    <div class="info">
+                        <h3>Dimension 21</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_22.png')">
+                    <img src="dimension_22.png" alt="Dimension 22">
+                    <div class="info">
+                        <h3>Dimension 22</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_23.png')">
+                    <img src="dimension_23.png" alt="Dimension 23">
+                    <div class="info">
+                        <h3>Dimension 23</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_24.png')">
+                    <img src="dimension_24.png" alt="Dimension 24">
+                    <div class="info">
+                        <h3>Dimension 24</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_25.png')">
+                    <img src="dimension_25.png" alt="Dimension 25">
+                    <div class="info">
+                        <h3>Dimension 25</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_26.png')">
+                    <img src="dimension_26.png" alt="Dimension 26">
+                    <div class="info">
+                        <h3>Dimension 26</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_27.png')">
+                    <img src="dimension_27.png" alt="Dimension 27">
+                    <div class="info">
+                        <h3>Dimension 27</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_28.png')">
+                    <img src="dimension_28.png" alt="Dimension 28">
+                    <div class="info">
+                        <h3>Dimension 28</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_29.png')">
+                    <img src="dimension_29.png" alt="Dimension 29">
+                    <div class="info">
+                        <h3>Dimension 29</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_30.png')">
+                    <img src="dimension_30.png" alt="Dimension 30">
+                    <div class="info">
+                        <h3>Dimension 30</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_31.png')">
+                    <img src="dimension_31.png" alt="Dimension 31">
+                    <div class="info">
+                        <h3>Dimension 31</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_32.png')">
+                    <img src="dimension_32.png" alt="Dimension 32">
+                    <div class="info">
+                        <h3>Dimension 32</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_33.png')">
+                    <img src="dimension_33.png" alt="Dimension 33">
+                    <div class="info">
+                        <h3>Dimension 33</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_34.png')">
+                    <img src="dimension_34.png" alt="Dimension 34">
+                    <div class="info">
+                        <h3>Dimension 34</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_35.png')">
+                    <img src="dimension_35.png" alt="Dimension 35">
+                    <div class="info">
+                        <h3>Dimension 35</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_36.png')">
+                    <img src="dimension_36.png" alt="Dimension 36">
+                    <div class="info">
+                        <h3>Dimension 36</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_37.png')">
+                    <img src="dimension_37.png" alt="Dimension 37">
+                    <div class="info">
+                        <h3>Dimension 37</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_38.png')">
+                    <img src="dimension_38.png" alt="Dimension 38">
+                    <div class="info">
+                        <h3>Dimension 38</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_39.png')">
+                    <img src="dimension_39.png" alt="Dimension 39">
+                    <div class="info">
+                        <h3>Dimension 39</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_40.png')">
+                    <img src="dimension_40.png" alt="Dimension 40">
+                    <div class="info">
+                        <h3>Dimension 40</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_41.png')">
+                    <img src="dimension_41.png" alt="Dimension 41">
+                    <div class="info">
+                        <h3>Dimension 41</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_42.png')">
+                    <img src="dimension_42.png" alt="Dimension 42">
+                    <div class="info">
+                        <h3>Dimension 42</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_43.png')">
+                    <img src="dimension_43.png" alt="Dimension 43">
+                    <div class="info">
+                        <h3>Dimension 43</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_44.png')">
+                    <img src="dimension_44.png" alt="Dimension 44">
+                    <div class="info">
+                        <h3>Dimension 44</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_45.png')">
+                    <img src="dimension_45.png" alt="Dimension 45">
+                    <div class="info">
+                        <h3>Dimension 45</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_46.png')">
+                    <img src="dimension_46.png" alt="Dimension 46">
+                    <div class="info">
+                        <h3>Dimension 46</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_47.png')">
+                    <img src="dimension_47.png" alt="Dimension 47">
+                    <div class="info">
+                        <h3>Dimension 47</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_48.png')">
+                    <img src="dimension_48.png" alt="Dimension 48">
+                    <div class="info">
+                        <h3>Dimension 48</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_49.png')">
+                    <img src="dimension_49.png" alt="Dimension 49">
+                    <div class="info">
+                        <h3>Dimension 49</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_50.png')">
+                    <img src="dimension_50.png" alt="Dimension 50">
+                    <div class="info">
+                        <h3>Dimension 50</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_51.png')">
+                    <img src="dimension_51.png" alt="Dimension 51">
+                    <div class="info">
+                        <h3>Dimension 51</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_52.png')">
+                    <img src="dimension_52.png" alt="Dimension 52">
+                    <div class="info">
+                        <h3>Dimension 52</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_53.png')">
+                    <img src="dimension_53.png" alt="Dimension 53">
+                    <div class="info">
+                        <h3>Dimension 53</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_54.png')">
+                    <img src="dimension_54.png" alt="Dimension 54">
+                    <div class="info">
+                        <h3>Dimension 54</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_55.png')">
+                    <img src="dimension_55.png" alt="Dimension 55">
+                    <div class="info">
+                        <h3>Dimension 55</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_56.png')">
+                    <img src="dimension_56.png" alt="Dimension 56">
+                    <div class="info">
+                        <h3>Dimension 56</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_57.png')">
+                    <img src="dimension_57.png" alt="Dimension 57">
+                    <div class="info">
+                        <h3>Dimension 57</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_58.png')">
+                    <img src="dimension_58.png" alt="Dimension 58">
+                    <div class="info">
+                        <h3>Dimension 58</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_59.png')">
+                    <img src="dimension_59.png" alt="Dimension 59">
+                    <div class="info">
+                        <h3>Dimension 59</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_60.png')">
+                    <img src="dimension_60.png" alt="Dimension 60">
+                    <div class="info">
+                        <h3>Dimension 60</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_61.png')">
+                    <img src="dimension_61.png" alt="Dimension 61">
+                    <div class="info">
+                        <h3>Dimension 61</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_62.png')">
+                    <img src="dimension_62.png" alt="Dimension 62">
+                    <div class="info">
+                        <h3>Dimension 62</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_63.png')">
+                    <img src="dimension_63.png" alt="Dimension 63">
+                    <div class="info">
+                        <h3>Dimension 63</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_64.png')">
+                    <img src="dimension_64.png" alt="Dimension 64">
+                    <div class="info">
+                        <h3>Dimension 64</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_65.png')">
+                    <img src="dimension_65.png" alt="Dimension 65">
+                    <div class="info">
+                        <h3>Dimension 65</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_66.png')">
+                    <img src="dimension_66.png" alt="Dimension 66">
+                    <div class="info">
+                        <h3>Dimension 66</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_67.png')">
+                    <img src="dimension_67.png" alt="Dimension 67">
+                    <div class="info">
+                        <h3>Dimension 67</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_68.png')">
+                    <img src="dimension_68.png" alt="Dimension 68">
+                    <div class="info">
+                        <h3>Dimension 68</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_69.png')">
+                    <img src="dimension_69.png" alt="Dimension 69">
+                    <div class="info">
+                        <h3>Dimension 69</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_70.png')">
+                    <img src="dimension_70.png" alt="Dimension 70">
+                    <div class="info">
+                        <h3>Dimension 70</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_71.png')">
+                    <img src="dimension_71.png" alt="Dimension 71">
+                    <div class="info">
+                        <h3>Dimension 71</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_72.png')">
+                    <img src="dimension_72.png" alt="Dimension 72">
+                    <div class="info">
+                        <h3>Dimension 72</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_73.png')">
+                    <img src="dimension_73.png" alt="Dimension 73">
+                    <div class="info">
+                        <h3>Dimension 73</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_74.png')">
+                    <img src="dimension_74.png" alt="Dimension 74">
+                    <div class="info">
+                        <h3>Dimension 74</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_75.png')">
+                    <img src="dimension_75.png" alt="Dimension 75">
+                    <div class="info">
+                        <h3>Dimension 75</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_76.png')">
+                    <img src="dimension_76.png" alt="Dimension 76">
+                    <div class="info">
+                        <h3>Dimension 76</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_77.png')">
+                    <img src="dimension_77.png" alt="Dimension 77">
+                    <div class="info">
+                        <h3>Dimension 77</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_78.png')">
+                    <img src="dimension_78.png" alt="Dimension 78">
+                    <div class="info">
+                        <h3>Dimension 78</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_79.png')">
+                    <img src="dimension_79.png" alt="Dimension 79">
+                    <div class="info">
+                        <h3>Dimension 79</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_80.png')">
+                    <img src="dimension_80.png" alt="Dimension 80">
+                    <div class="info">
+                        <h3>Dimension 80</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_81.png')">
+                    <img src="dimension_81.png" alt="Dimension 81">
+                    <div class="info">
+                        <h3>Dimension 81</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_82.png')">
+                    <img src="dimension_82.png" alt="Dimension 82">
+                    <div class="info">
+                        <h3>Dimension 82</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_83.png')">
+                    <img src="dimension_83.png" alt="Dimension 83">
+                    <div class="info">
+                        <h3>Dimension 83</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_84.png')">
+                    <img src="dimension_84.png" alt="Dimension 84">
+                    <div class="info">
+                        <h3>Dimension 84</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_85.png')">
+                    <img src="dimension_85.png" alt="Dimension 85">
+                    <div class="info">
+                        <h3>Dimension 85</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_86.png')">
+                    <img src="dimension_86.png" alt="Dimension 86">
+                    <div class="info">
+                        <h3>Dimension 86</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_87.png')">
+                    <img src="dimension_87.png" alt="Dimension 87">
+                    <div class="info">
+                        <h3>Dimension 87</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_88.png')">
+                    <img src="dimension_88.png" alt="Dimension 88">
+                    <div class="info">
+                        <h3>Dimension 88</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_89.png')">
+                    <img src="dimension_89.png" alt="Dimension 89">
+                    <div class="info">
+                        <h3>Dimension 89</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_90.png')">
+                    <img src="dimension_90.png" alt="Dimension 90">
+                    <div class="info">
+                        <h3>Dimension 90</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_91.png')">
+                    <img src="dimension_91.png" alt="Dimension 91">
+                    <div class="info">
+                        <h3>Dimension 91</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_92.png')">
+                    <img src="dimension_92.png" alt="Dimension 92">
+                    <div class="info">
+                        <h3>Dimension 92</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_93.png')">
+                    <img src="dimension_93.png" alt="Dimension 93">
+                    <div class="info">
+                        <h3>Dimension 93</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_94.png')">
+                    <img src="dimension_94.png" alt="Dimension 94">
+                    <div class="info">
+                        <h3>Dimension 94</h3>
+                    </div>
+                </div>
+                <div class="dimension-card" onclick="openModal('dimension_95.png')">
+                    <img src="dimension_95.png" alt="Dimension 95">
+                    <div class="info">
+                        <h3>Dimension 95</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal" onclick="closeModal()">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <img id="modal-img" src="" alt="">
+    </div>
+
+    <script>
+        function openModal(imageName) {
+            const modal = document.getElementById('modal');
+            const modalImg = document.getElementById('modal-img');
+            modalImg.src = imageName;
+            modal.style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        // Close modal on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>

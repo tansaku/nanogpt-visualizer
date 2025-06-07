@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentence Flow Visualization - knock_6_1_48_words</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2em;
+        }
+        .header p {
+            margin: 5px 0;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .visualization {
+            text-align: center;
+            margin: 30px 0;
+            position: relative;
+        }
+        .zoom-container {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            max-height: 80vh;
+            overflow: auto;
+            background: white;
+        }
+        .zoom-container.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1000;
+            max-height: none;
+            border-radius: 0;
+        }
+        .zoom-container img {
+            display: block;
+            width: 100%;
+            height: auto;
+            transition: transform 0.2s;
+            cursor: grab;
+        }
+        .zoom-container img:active {
+            cursor: grabbing;
+        }
+        .zoom-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 5px;
+            padding: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1001;
+        }
+        .zoom-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            margin: 0 2px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .zoom-btn:hover {
+            background: #5a67d8;
+        }
+        .fullscreen-btn {
+            background: #28a745;
+        }
+        .fullscreen-btn:hover {
+            background: #218838;
+        }
+        .data-section {
+            margin: 30px 0;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .table-container {
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: white;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .data-table th {
+            background: #667eea;
+            color: white;
+            padding: 8px 4px;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .data-table td {
+            padding: 6px 4px;
+            text-align: center;
+            border: 1px solid #eee;
+        }
+        .word-cell {
+            background: #f8f9fa !important;
+            font-weight: bold;
+            position: sticky;
+            left: 0;
+            z-index: 5;
+        }
+        .positive {
+            background: rgba(0, 0, 0, 0.05);
+        }
+        .negative {
+            background: rgba(220, 0, 0, 0.05);
+            color: #dc3545;
+        }
+        .info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        .stat-card .value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .instructions {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #2196f3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Sentence Flow Visualization</h1>
+            <p><strong>Model:</strong> knock_6_1_48_words</p>
+            <p><strong>Probe Sentence:</strong> "knock knock whos there bob"</p>
+            <p><strong>Embedding Dimensions:</strong> 48</p>
+        </div>
+
+        <div class="content">
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>Words</h3>
+                    <div class="value">5</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Dimensions</h3>
+                    <div class="value">48</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Cells</h3>
+                    <div class="value">240</div>
+                </div>
+            </div>
+
+            <div class="info">
+                <h3>How to Read This Visualization</h3>
+                <p>This visualization shows how each word in the probe sentence activates the learned embedding dimensions:</p>
+                <ul>
+                    <li><strong>Rows:</strong> Each word in the sentence ("knock" ", "knock" ", "whos" ", "there" ", "bob")</li>
+                    <li><strong>Columns:</strong> Each embedding dimension (0 to 47)</li>
+                    <li><strong>Wordmaps:</strong> Each cell shows the learned word cloud for that dimension</li>
+                    <li><strong>Opacity:</strong> How transparent/opaque the wordmap appears indicates activation strength</li>
+                    <li><strong>Border Color:</strong> Black borders for positive activation, red for negative</li>
+                    <li><strong>Numbers:</strong> The exact embedding value for that word-dimension pair</li>
+                </ul>
+                <p><em>Note: You must run visualize_tokens.py first to generate the embedding wordmaps.</em></p>
+            </div>
+
+            <div class="instructions">
+                <strong>🔍 Interaction Instructions:</strong>
+                <ul>
+                    <li><strong>Zoom:</strong> Use mouse wheel to zoom in/out on the visualization</li>
+                    <li><strong>Pan:</strong> Click and drag to move around when zoomed in</li>
+                    <li><strong>Fullscreen:</strong> Click the fullscreen button for maximum viewing area</li>
+                    <li><strong>Reset:</strong> Use the zoom controls to reset view</li>
+                    <li><strong>Data Table:</strong> Scroll down to see exact numerical values</li>
+                </ul>
+            </div>
+
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: black; border: 2px solid black;"></div>
+                    <span>Positive Activation</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: red; border: 2px solid red;"></div>
+                    <span>Negative Activation</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(0,0,0,0.3);"></div>
+                    <span>Low Opacity = Weak Activation</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(0,0,0,1);"></div>
+                    <span>High Opacity = Strong Activation</span>
+                </div>
+            </div>
+
+            <div class="visualization">
+                <div class="zoom-container" id="zoomContainer">
+                    <div class="zoom-controls">
+                        <button class="zoom-btn" onclick="zoomIn()">+</button>
+                        <button class="zoom-btn" onclick="zoomOut()">−</button>
+                        <button class="zoom-btn" onclick="resetZoom()">Reset</button>
+                        <button class="zoom-btn fullscreen-btn" onclick="toggleFullscreen()" id="fullscreenBtn">⛶ Fullscreen</button>
+                    </div>
+                    <img id="mainImage" src="sentence_flow.png" alt="Sentence Flow Visualization">
+                </div>
+            </div>
+
+            
+            <div class="data-section">
+                <h3>Exact Embedding Values</h3>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Word</th><th>Dim 0</th><th>Dim 1</th><th>Dim 2</th><th>Dim 3</th><th>Dim 4</th><th>Dim 5</th><th>Dim 6</th><th>Dim 7</th><th>Dim 8</th><th>Dim 9</th><th>Dim 10</th><th>Dim 11</th><th>Dim 12</th><th>Dim 13</th><th>Dim 14</th><th>Dim 15</th><th>Dim 16</th><th>Dim 17</th><th>Dim 18</th><th>Dim 19</th><th>Dim 20</th><th>Dim 21</th><th>Dim 22</th><th>Dim 23</th><th>Dim 24</th><th>Dim 25</th><th>Dim 26</th><th>Dim 27</th><th>Dim 28</th><th>Dim 29</th><th>Dim 30</th><th>Dim 31</th><th>Dim 32</th><th>Dim 33</th><th>Dim 34</th><th>Dim 35</th><th>Dim 36</th><th>Dim 37</th><th>Dim 38</th><th>Dim 39</th><th>Dim 40</th><th>Dim 41</th><th>Dim 42</th><th>Dim 43</th><th>Dim 44</th><th>Dim 45</th><th>Dim 46</th><th>Dim 47</th>
+                            </tr>
+                        </thead>
+                        <tbody><tr><td class='word-cell'><strong>knock</strong></td><td class='positive'>0.006</td><td class='negative'>-0.222</td><td class='negative'>-0.147</td><td class='positive'>0.031</td><td class='negative'>-0.038</td><td class='positive'>0.078</td><td class='positive'>0.019</td><td class='positive'>0.197</td><td class='positive'>0.110</td><td class='positive'>0.029</td><td class='positive'>0.003</td><td class='negative'>-0.066</td><td class='negative'>-0.027</td><td class='negative'>-0.007</td><td class='negative'>-0.305</td><td class='positive'>0.071</td><td class='negative'>-0.002</td><td class='negative'>-0.244</td><td class='positive'>0.006</td><td class='positive'>0.008</td><td class='positive'>0.097</td><td class='positive'>0.025</td><td class='positive'>0.017</td><td class='negative'>-0.047</td><td class='positive'>0.025</td><td class='positive'>0.092</td><td class='positive'>0.048</td><td class='positive'>0.058</td><td class='negative'>-0.003</td><td class='positive'>0.025</td><td class='positive'>0.025</td><td class='negative'>-0.046</td><td class='positive'>0.051</td><td class='negative'>-0.019</td><td class='positive'>0.092</td><td class='positive'>0.078</td><td class='positive'>0.009</td><td class='positive'>0.103</td><td class='positive'>0.066</td><td class='negative'>-0.027</td><td class='positive'>0.088</td><td class='negative'>-0.024</td><td class='positive'>0.011</td><td class='negative'>-0.056</td><td class='positive'>0.075</td><td class='negative'>-0.073</td><td class='negative'>-0.001</td><td class='positive'>0.012</td></tr><tr><td class='word-cell'><strong>knock</strong></td><td class='positive'>0.006</td><td class='negative'>-0.222</td><td class='negative'>-0.147</td><td class='positive'>0.031</td><td class='negative'>-0.038</td><td class='positive'>0.078</td><td class='positive'>0.019</td><td class='positive'>0.197</td><td class='positive'>0.110</td><td class='positive'>0.029</td><td class='positive'>0.003</td><td class='negative'>-0.066</td><td class='negative'>-0.027</td><td class='negative'>-0.007</td><td class='negative'>-0.305</td><td class='positive'>0.071</td><td class='negative'>-0.002</td><td class='negative'>-0.244</td><td class='positive'>0.006</td><td class='positive'>0.008</td><td class='positive'>0.097</td><td class='positive'>0.025</td><td class='positive'>0.017</td><td class='negative'>-0.047</td><td class='positive'>0.025</td><td class='positive'>0.092</td><td class='positive'>0.048</td><td class='positive'>0.058</td><td class='negative'>-0.003</td><td class='positive'>0.025</td><td class='positive'>0.025</td><td class='negative'>-0.046</td><td class='positive'>0.051</td><td class='negative'>-0.019</td><td class='positive'>0.092</td><td class='positive'>0.078</td><td class='positive'>0.009</td><td class='positive'>0.103</td><td class='positive'>0.066</td><td class='negative'>-0.027</td><td class='positive'>0.088</td><td class='negative'>-0.024</td><td class='positive'>0.011</td><td class='negative'>-0.056</td><td class='positive'>0.075</td><td class='negative'>-0.073</td><td class='negative'>-0.001</td><td class='positive'>0.012</td></tr><tr><td class='word-cell'><strong>whos</strong></td><td class='negative'>-0.010</td><td class='negative'>-0.151</td><td class='negative'>-0.011</td><td class='positive'>0.016</td><td class='negative'>-0.114</td><td class='negative'>-0.052</td><td class='positive'>0.068</td><td class='positive'>0.117</td><td class='positive'>0.056</td><td class='positive'>0.094</td><td class='negative'>-0.142</td><td class='positive'>0.010</td><td class='negative'>-0.126</td><td class='positive'>0.007</td><td class='negative'>-0.378</td><td class='positive'>0.059</td><td class='positive'>0.069</td><td class='negative'>-0.156</td><td class='positive'>0.039</td><td class='positive'>0.086</td><td class='positive'>0.082</td><td class='positive'>0.010</td><td class='negative'>-0.017</td><td class='negative'>-0.047</td><td class='negative'>-0.006</td><td class='positive'>0.075</td><td class='positive'>0.073</td><td class='negative'>-0.014</td><td class='negative'>-0.007</td><td class='positive'>0.020</td><td class='negative'>-0.033</td><td class='negative'>-0.103</td><td class='negative'>-0.022</td><td class='positive'>0.001</td><td class='positive'>0.070</td><td class='positive'>0.015</td><td class='positive'>0.114</td><td class='positive'>0.178</td><td class='negative'>-0.080</td><td class='negative'>-0.073</td><td class='positive'>0.133</td><td class='positive'>0.080</td><td class='positive'>0.001</td><td class='negative'>-0.049</td><td class='positive'>0.088</td><td class='negative'>-0.054</td><td class='positive'>0.066</td><td class='positive'>0.138</td></tr><tr><td class='word-cell'><strong>there</strong></td><td class='negative'>-0.019</td><td class='negative'>-0.032</td><td class='negative'>-0.073</td><td class='positive'>0.032</td><td class='negative'>-0.092</td><td class='positive'>0.030</td><td class='positive'>0.036</td><td class='positive'>0.009</td><td class='negative'>-0.093</td><td class='negative'>-0.109</td><td class='positive'>0.216</td><td class='positive'>0.034</td><td class='negative'>-0.058</td><td class='negative'>-0.042</td><td class='negative'>-0.322</td><td class='positive'>0.125</td><td class='negative'>-0.029</td><td class='negative'>-0.024</td><td class='positive'>0.005</td><td class='positive'>0.042</td><td class='positive'>0.108</td><td class='positive'>0.059</td><td class='negative'>-0.020</td><td class='negative'>-0.067</td><td class='positive'>0.025</td><td class='negative'>-0.048</td><td class='positive'>0.073</td><td class='positive'>0.009</td><td class='negative'>-0.055</td><td class='positive'>0.017</td><td class='negative'>-0.014</td><td class='negative'>-0.070</td><td class='positive'>0.047</td><td class='negative'>-0.026</td><td class='positive'>0.004</td><td class='negative'>-0.019</td><td class='negative'>-0.009</td><td class='positive'>0.150</td><td class='positive'>0.022</td><td class='negative'>-0.112</td><td class='positive'>0.112</td><td class='positive'>0.111</td><td class='positive'>0.055</td><td class='positive'>0.021</td><td class='positive'>0.058</td><td class='negative'>-0.086</td><td class='negative'>-0.014</td><td class='positive'>0.107</td></tr><tr><td class='word-cell'><strong>bob</strong></td><td class='negative'>-0.014</td><td class='negative'>-0.178</td><td class='negative'>-0.066</td><td class='positive'>0.053</td><td class='negative'>-0.067</td><td class='negative'>-0.019</td><td class='negative'>-0.050</td><td class='negative'>-0.044</td><td class='positive'>0.046</td><td class='positive'>0.292</td><td class='positive'>0.311</td><td class='negative'>-0.084</td><td class='negative'>-0.059</td><td class='positive'>0.027</td><td class='negative'>-0.979</td><td class='positive'>0.147</td><td class='positive'>0.002</td><td class='negative'>-0.144</td><td class='negative'>-0.030</td><td class='negative'>-0.015</td><td class='positive'>0.095</td><td class='negative'>-0.077</td><td class='negative'>-0.002</td><td class='negative'>-0.099</td><td class='negative'>-0.033</td><td class='negative'>-0.034</td><td class='positive'>0.048</td><td class='negative'>-0.052</td><td class='positive'>0.110</td><td class='negative'>-0.012</td><td class='positive'>0.210</td><td class='negative'>-0.042</td><td class='positive'>0.233</td><td class='positive'>0.040</td><td class='positive'>0.114</td><td class='negative'>-0.135</td><td class='positive'>0.195</td><td class='positive'>0.385</td><td class='negative'>-0.050</td><td class='negative'>-0.166</td><td class='positive'>0.224</td><td class='positive'>0.079</td><td class='positive'>0.001</td><td class='negative'>-0.019</td><td class='negative'>-0.021</td><td class='negative'>-0.506</td><td class='positive'>0.012</td><td class='positive'>0.036</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="info">
+                <h3>Interpretation</h3>
+                <p>This visualization helps you understand:</p>
+                <ul>
+                    <li>Which dimensions are most activated by each word</li>
+                    <li>How different words have different activation patterns</li>
+                    <li>Whether certain dimensions specialize in certain types of words</li>
+                    <li>The overall distribution of information across the embedding space</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentZoom = 1;
+        let isDragging = false;
+        let startX, startY, scrollLeft, scrollTop;
+        let isFullscreen = false;
+
+        const container = document.getElementById('zoomContainer');
+        const image = document.getElementById('mainImage');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+        // Zoom functionality
+        container.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            currentZoom *= delta;
+            currentZoom = Math.max(0.5, Math.min(currentZoom, 10));
+            image.style.transform = `scale(${currentZoom})`;
+        });
+
+        // Pan functionality
+        container.addEventListener('mousedown', function(e) {
+            isDragging = true;
+            startX = e.pageX - container.offsetLeft;
+            startY = e.pageY - container.offsetTop;
+            scrollLeft = container.scrollLeft;
+            scrollTop = container.scrollTop;
+            container.style.cursor = 'grabbing';
+        });
+
+        container.addEventListener('mouseleave', function() {
+            isDragging = false;
+            container.style.cursor = 'grab';
+        });
+
+        container.addEventListener('mouseup', function() {
+            isDragging = false;
+            container.style.cursor = 'grab';
+        });
+
+        container.addEventListener('mousemove', function(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+            const x = e.pageX - container.offsetLeft;
+            const y = e.pageY - container.offsetTop;
+            const walkX = (x - startX) * 2;
+            const walkY = (y - startY) * 2;
+            container.scrollLeft = scrollLeft - walkX;
+            container.scrollTop = scrollTop - walkY;
+        });
+
+        // Zoom control buttons
+        function zoomIn() {
+            currentZoom *= 1.2;
+            currentZoom = Math.min(currentZoom, 10);
+            image.style.transform = `scale(${currentZoom})`;
+        }
+
+        function zoomOut() {
+            currentZoom *= 0.8;
+            currentZoom = Math.max(currentZoom, 0.5);
+            image.style.transform = `scale(${currentZoom})`;
+        }
+
+        function resetZoom() {
+            currentZoom = 1;
+            image.style.transform = 'scale(1)';
+            container.scrollLeft = 0;
+            container.scrollTop = 0;
+        }
+
+        // Fullscreen functionality
+        function toggleFullscreen() {
+            if (!isFullscreen) {
+                container.classList.add('fullscreen');
+                fullscreenBtn.textContent = '✕ Exit Fullscreen';
+                isFullscreen = true;
+                // Prevent body scroll when in fullscreen
+                document.body.style.overflow = 'hidden';
+            } else {
+                container.classList.remove('fullscreen');
+                fullscreenBtn.textContent = '⛶ Fullscreen';
+                isFullscreen = false;
+                // Restore body scroll
+                document.body.style.overflow = 'auto';
+            }
+        }
+
+        // Escape key to exit fullscreen
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && isFullscreen) {
+                toggleFullscreen();
+            }
+        });
+    </script>
+</body>
+</html>

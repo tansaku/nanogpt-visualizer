@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Q/K/V Weight Matrices - knock_6_1_36_words</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2em;
+        }
+        .header p {
+            margin: 5px 0;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .layer-tabs {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .layer-tab-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }
+        .layer-tab-btn {
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            color: #495057;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+            min-width: 100px;
+        }
+        .layer-tab-btn:hover {
+            background: #e9ecef;
+            border-color: #adb5bd;
+        }
+        .layer-tab-btn.active {
+            background: #9b59b6;
+            border-color: #9b59b6;
+            color: white;
+        }
+        .qkv-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin: 30px 0;
+        }
+        .qkv-card {
+            border: 2px solid #ddd;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+        }
+        .qkv-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        .qkv-card.query { border-color: #e74c3c; }
+        .qkv-card.key { border-color: #f39c12; }
+        .qkv-card.value { border-color: #27ae60; }
+
+        .qkv-header {
+            padding: 15px 20px;
+            font-weight: bold;
+            color: white;
+            text-align: center;
+        }
+        .qkv-header.query { background: #e74c3c; }
+        .qkv-header.key { background: #f39c12; }
+        .qkv-header.value { background: #27ae60; }
+
+        .qkv-image {
+            padding: 0;
+        }
+        .qkv-image img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .qkv-stats {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            font-size: 12px;
+        }
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            max-width: 95%;
+            max-height: 95%;
+            overflow: auto;
+            position: relative;
+        }
+        .modal .close {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            color: #666;
+            font-size: 30px;
+            cursor: pointer;
+            z-index: 1001;
+        }
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            background: #f8f9fa;
+        }
+        .modal-body {
+            padding: 20px;
+            text-align: center;
+        }
+        .modal-body img {
+            max-width: 100%;
+            height: auto;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        .stat-card .value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #9b59b6;
+        }
+        .info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .layer-section {
+            display: none;
+        }
+        .layer-section.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Q/K/V Weight Matrix Visualization</h1>
+            <p><strong>Model:</strong> knock_6_1_36_words</p>
+            <p><strong>Embedding Dimensions:</strong> 36×36 transformations</p>
+            <p><strong>Layers:</strong> 6 attention layers</p>
+        </div>
+
+        <div class="content">
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>Matrix Size</h3>
+                    <div class="value">36×36</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Attention Layers</h3>
+                    <div class="value">6</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Parameters</h3>
+                    <div class="value">23,328</div>
+                </div>
+            </div>
+
+            <div class="info">
+                <h3>Understanding Q/K/V Weight Matrices</h3>
+                <p>These heatmaps show the linear transformation matrices that convert combined embeddings into attention spaces:</p>
+                <ul>
+                    <li><strong>Query (Q) Matrix:</strong> How input dimensions combine to create "what I'm looking for" representations</li>
+                    <li><strong>Key (K) Matrix:</strong> How input dimensions combine to create "what I offer" representations</li>
+                    <li><strong>Value (V) Matrix:</strong> How input dimensions combine to create "what I contribute" representations</li>
+                </ul>
+                <p><strong>Color coding:</strong> Red = positive weights, Blue = negative weights, White = near zero</p>
+                <p><strong>Click any matrix</strong> to view it in full size with detailed statistics</p>
+            </div>
+
+            <div class="layer-tabs">
+                <h3>Attention Layer:</h3>
+                <div class="layer-tab-buttons" id="layer-tabs"></div>
+            </div>
+
+            <div id="layer-sections"></div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <div class="modal-header">
+                <h2 id="modal-title">Matrix Details</h2>
+            </div>
+            <div class="modal-body">
+                <img id="modal-img" src="" alt="">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const layerData = {"0": {"query": {"image": "query_layer_0_heatmap.png", "stats": {"mean": -0.00022101520153228194, "std": 0.06793584674596786, "min": -0.20402510464191437, "max": 0.2623524069786072, "shape": [36, 36]}}, "key": {"image": "key_layer_0_heatmap.png", "stats": {"mean": -0.0009090612293221056, "std": 0.0785956084728241, "min": -0.2776162922382355, "max": 0.2178543657064438, "shape": [36, 36]}}, "value": {"image": "value_layer_0_heatmap.png", "stats": {"mean": -0.00012562357005663216, "std": 0.027303064242005348, "min": -0.10185005515813828, "max": 0.11023622006177902, "shape": [36, 36]}}}, "1": {"query": {"image": "query_layer_1_heatmap.png", "stats": {"mean": 0.0007395705906674266, "std": 0.0828392505645752, "min": -0.2687690556049347, "max": 0.27076804637908936, "shape": [36, 36]}}, "key": {"image": "key_layer_1_heatmap.png", "stats": {"mean": -7.056909089442343e-05, "std": 0.07081858813762665, "min": -0.22370073199272156, "max": 0.24477848410606384, "shape": [36, 36]}}, "value": {"image": "value_layer_1_heatmap.png", "stats": {"mean": -0.00025115907192230225, "std": 0.028209812939167023, "min": -0.08477922528982162, "max": 0.09904737025499344, "shape": [36, 36]}}}, "2": {"query": {"image": "query_layer_2_heatmap.png", "stats": {"mean": 0.00014309164544101804, "std": 0.08561930805444717, "min": -0.28842657804489136, "max": 0.2564367949962616, "shape": [36, 36]}}, "key": {"image": "key_layer_2_heatmap.png", "stats": {"mean": 6.188102997839451e-05, "std": 0.07335366308689117, "min": -0.2104240357875824, "max": 0.2623828947544098, "shape": [36, 36]}}, "value": {"image": "value_layer_2_heatmap.png", "stats": {"mean": 0.00012347970914561301, "std": 0.0306817889213562, "min": -0.10157199949026108, "max": 0.10818887501955032, "shape": [36, 36]}}}, "3": {"query": {"image": "query_layer_3_heatmap.png", "stats": {"mean": 0.0006061309250071645, "std": 0.08350765705108643, "min": -0.27624741196632385, "max": 0.3067626953125, "shape": [36, 36]}}, "key": {"image": "key_layer_3_heatmap.png", "stats": {"mean": 0.00013157281500753015, "std": 0.07636155188083649, "min": -0.22495433688163757, "max": 0.2496161311864853, "shape": [36, 36]}}, "value": {"image": "value_layer_3_heatmap.png", "stats": {"mean": 0.00035615224624052644, "std": 0.03031248226761818, "min": -0.09241852909326553, "max": 0.1269303560256958, "shape": [36, 36]}}}, "4": {"query": {"image": "query_layer_4_heatmap.png", "stats": {"mean": 0.00010874407598748803, "std": 0.09860466420650482, "min": -0.2895292639732361, "max": 0.3152965009212494, "shape": [36, 36]}}, "key": {"image": "key_layer_4_heatmap.png", "stats": {"mean": 0.0006498547154478729, "std": 0.08409083634614944, "min": -0.2484239786863327, "max": 0.23662735521793365, "shape": [36, 36]}}, "value": {"image": "value_layer_4_heatmap.png", "stats": {"mean": 0.00014859791554044932, "std": 0.045083269476890564, "min": -0.17881245911121368, "max": 0.13884344696998596, "shape": [36, 36]}}}, "5": {"query": {"image": "query_layer_5_heatmap.png", "stats": {"mean": -0.00010591601312626153, "std": 0.09114120900630951, "min": -0.38445672392845154, "max": 0.31837841868400574, "shape": [36, 36]}}, "key": {"image": "key_layer_5_heatmap.png", "stats": {"mean": 0.00028609688160941005, "std": 0.08136717975139618, "min": -0.3253939747810364, "max": 0.37163248658180237, "shape": [36, 36]}}, "value": {"image": "value_layer_5_heatmap.png", "stats": {"mean": 0.00019907666137441993, "std": 0.03747466951608658, "min": -0.13051189482212067, "max": 0.1272866427898407, "shape": [36, 36]}}}};
+        let currentLayer = Object.keys(layerData)[0];
+
+        function generateLayerTabs() {
+            const tabsContainer = document.getElementById('layer-tabs');
+            Object.keys(layerData).forEach((layer, index) => {
+                const button = document.createElement('button');
+                button.className = `layer-tab-btn ${index === 0 ? 'active' : ''}`;
+                button.textContent = `Layer ${layer}`;
+                button.onclick = () => showLayer(layer);
+                tabsContainer.appendChild(button);
+            });
+        }
+
+        function generateLayerSections() {
+            const sectionsContainer = document.getElementById('layer-sections');
+
+            Object.keys(layerData).forEach((layer, index) => {
+                const section = document.createElement('div');
+                section.className = `layer-section ${index === 0 ? 'active' : ''}`;
+                section.id = `layer-${layer}`;
+
+                const qkvTypes = ['query', 'key', 'value'];
+                const grid = document.createElement('div');
+                grid.className = 'qkv-grid';
+
+                qkvTypes.forEach(type => {
+                    const data = layerData[layer][type];
+                    if (data) {
+                        const card = document.createElement('div');
+                        card.className = `qkv-card ${type}`;
+                        card.onclick = () => openModal(data.image, `${type.toUpperCase()} Matrix - Layer ${layer}`);
+
+                        card.innerHTML = `
+                            <div class="qkv-header ${type}">
+                                ${type.toUpperCase()} Matrix
+                            </div>
+                            <div class="qkv-image">
+                                <img src="${data.image}" alt="${type} matrix">
+                            </div>
+                            <div class="qkv-stats">
+                                <div class="stat-row">
+                                    <span>Mean:</span>
+                                    <span>${data.stats.mean.toFixed(4)}</span>
+                                </div>
+                                <div class="stat-row">
+                                    <span>Std:</span>
+                                    <span>${data.stats.std.toFixed(4)}</span>
+                                </div>
+                                <div class="stat-row">
+                                    <span>Range:</span>
+                                    <span>[${data.stats.min.toFixed(3)}, ${data.stats.max.toFixed(3)}]</span>
+                                </div>
+                            </div>
+                        `;
+
+                        grid.appendChild(card);
+                    }
+                });
+
+                section.appendChild(grid);
+                sectionsContainer.appendChild(section);
+            });
+        }
+
+        function showLayer(layer) {
+            // Update tabs
+            document.querySelectorAll('.layer-tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Update sections
+            document.querySelectorAll('.layer-section').forEach(section => {
+                section.classList.remove('active');
+            });
+            document.getElementById(`layer-${layer}`).classList.add('active');
+
+            currentLayer = layer;
+        }
+
+        function openModal(imageSrc, title) {
+            const modal = document.getElementById('modal');
+            const modalImg = document.getElementById('modal-img');
+            const modalTitle = document.getElementById('modal-title');
+
+            modalImg.src = imageSrc;
+            modalTitle.textContent = title;
+            modal.style.display = 'flex';
+        }
+
+        function closeModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        // Close modal on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
+        });
+
+        // Initialize the page
+        generateLayerTabs();
+        generateLayerSections();
+    </script>
+</body>
+</html>

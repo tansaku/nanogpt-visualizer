@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Attention Pattern - knock_6_1_36_words</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; background: #f9f9f9; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 2em; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        p { color: #555; }
+        img { max-width: 100%; height: auto; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Attention Pattern</h1>
+        <p><strong>Model:</strong> knock_6_1_36_words</p>
+        <p><strong>Probe Sentence:</strong> "knock knock whos there bob"</p>
+        <p>This heatmap shows the attention weights from the first attention layer.
+        Each row represents a "query" word, and each column represents a "key" word.
+        The value in a cell indicates how much attention the query word pays to the key word.</p>
+        <img src="attention_pattern.png" alt="Attention Pattern Heatmap">
+    </div>
+</body>
+</html>
