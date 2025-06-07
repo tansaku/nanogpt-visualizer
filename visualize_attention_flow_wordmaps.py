@@ -504,19 +504,19 @@ def get_code_snippet(step_name):
     """Returns a hard-coded explanation for each calculation step."""
 
     code_map = {
-        "Input (x)": "x = token_embedding + positional_embedding",
-        "After LN1": "x_ln1 = layernorm(x, ln1_gamma, ln1_beta)",
-        "Query (q)": "q = x_ln1 @ W_q + b_q",
-        "Key (k)": "k = x_ln1 @ W_k + b_k",
-        "Value (v)": "v = x_ln1 @ W_v + b_v",
-        "Attn Out (z)": "z = softmax((q @ k.T) / sqrt(d_k)) @ v",
-        "Attn Proj": "attn_proj = z @ c_proj_w + c_proj_b",
-        "After Resid1": "x = x + attn_proj",
-        "After LN2": "x_ln2 = layernorm(x, ln2_gamma, ln2_beta)",
-        "MLP Out": "mlp_out = gelu(x_ln2 @ mlp_fc_w + mlp_fc_b) @ mlp_proj_w + mlp_proj_b",
-        "Block Output": "x = x_after_attn + mlp_out",
-        "After Final LN": "x_final = layernorm(x, ln_f_gamma, ln_f_beta)",
-        "Logits": "logits = x_final @ lm_head.weight.T",
+        "Input (x)": "x = self.transformer.drop(tok_emb + pos_emb)",
+        "After LN1": "x = x + self.attn(self.ln_1(x))  // self.ln_1(x) is applied first",
+        "Query (q)": "q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)",
+        "Key (k)": "q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)",
+        "Value (v)": "q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)",
+        "Attn Out (z)": "y = att @ v  // Weighted sum of Value vectors",
+        "Attn Proj": "y = self.resid_dropout(self.c_proj(y))",
+        "After Resid1": "x = x + self.attn(self.ln_1(x)) // First residual connection",
+        "After LN2": "x = x + self.mlp(self.ln_2(x)) // self.ln_2(x) is applied first",
+        "MLP Out": "x = self.mlp(x) // Full MLP block: fc -> gelu -> proj -> dropout",
+        "Block Output": "x = x + self.mlp(self.ln_2(x)) // Second residual connection",
+        "After Final LN": "x = self.transformer.ln_f(x)",
+        "Logits": "logits = self.lm_head(x)",
     }
     return code_map.get(step_name, "No code snippet available.")
 
@@ -743,19 +743,19 @@ def generate_html_page(
             const allWords = {words_json};
             const allImagePaths = {image_paths_json};
             const codeSnippets = {{
-                "Input (x)": "x = token_embedding + positional_embedding",
-                "After LN1": "x_ln1 = layernorm(x, ln1_gamma, ln1_beta)",
-                "Query (q)": "q = x_ln1 @ W_q + b_q",
-                "Key (k)": "k = x_ln1 @ W_k + b_k",
-                "Value (v)": "v = x_ln1 @ W_v + b_v",
-                "Attn Out (z)": "z = softmax((q @ k.T) / sqrt(d_k)) @ v",
-                "Attn Proj": "attn_proj = z @ c_proj_w + c_proj_b",
-                "After Resid1": "x = x + attn_proj",
-                "After LN2": "x_ln2 = layernorm(x, ln2_gamma, ln2_beta)",
-                "MLP Out": "mlp_out = gelu(x_ln2 @ mlp_fc_w + mlp_fc_b) @ mlp_proj_w + mlp_proj_b",
-                "Block Output": "x = x_after_attn + mlp_out",
-                "After Final LN": "x_final = layernorm(x, ln_f_gamma, ln_f_beta)",
-                "Logits": "logits = x_final @ lm_head.weight.T"
+                "Input (x)": "x = self.transformer.drop(tok_emb + pos_emb)",
+                "After LN1": "x = x + self.attn(self.ln_1(x))  // self.ln_1(x) is applied first",
+                "Query (q)": "q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)",
+                "Key (k)": "q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)",
+                "Value (v)": "q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)",
+                "Attn Out (z)": "y = att @ v  // Weighted sum of Value vectors",
+                "Attn Proj": "y = self.resid_dropout(self.c_proj(y))",
+                "After Resid1": "x = x + self.attn(self.ln_1(x)) // First residual connection",
+                "After LN2": "x = x + self.mlp(self.ln_2(x)) // self.ln_2(x) is applied first",
+                "MLP Out": "x = self.mlp(x) // Full MLP block: fc -> gelu -> proj -> dropout",
+                "Block Output": "x = x + self.mlp(self.ln_2(x)) // Second residual connection",
+                "After Final LN": "x = self.transformer.ln_f(x)",
+                "Logits": "logits = self.lm_head(x)",
             }};
 
             function openModal(layerKey, wordIndex, stepName) {{
