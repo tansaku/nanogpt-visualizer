@@ -4,7 +4,7 @@ This repository contains a suite of Python scripts to generate in-depth visualiz
 
 The primary output is a detailed HTML page (`index.html`) that shows the state of the model's representations at every stage of processing for a given input sentence.
 
-![Visualization Screenshot](screenshot.png) <!-- Placeholder image -->
+[![Visualization Screenshot](screenshot.png)](https://tansaku.github.io/nanogpt-visualizer/)
 
 ## Features
 
