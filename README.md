@@ -104,3 +104,12 @@ This repository contains several scripts for different kinds of analysis:
 -   ... and others for more specific deep dives.
 
 Each script can be explored for more targeted analysis of the model's components.
+
+## Further Context
+
+This repository was developed to support the "Transformers, From the Inside Out" talk. You can find the slides and a recording of the presentation here:
+
+-   **[Presentation Slides (PDF)](TransformersInsideOut-part2.pdf)**
+-   **Presentation Video:**
+
+    [![Transformers, From the Inside Out](https://img.youtube.com/vi/Y1Iv5bH3xXo/0.jpg)](https://youtu.be/Y1Iv5bH3xXo)
