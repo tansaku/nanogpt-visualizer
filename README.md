@@ -50,30 +50,21 @@ The scripts in this repository use a `.env` file to manage configuration, such a
     cp env.template .env
     ```
 
-2.  **Edit your `.env` file.** Open the `.env` file and update the variables to point to your model files and the desired probe sentence.
+2.  **Edit your `.env` file.** Open the `.env` file and update the variables to point to your model files and the desired probe sentence. The model files (`ckpt.pt`, `meta.pkl`) can be located anywhere on your computer.
 
-    -   `MODEL`: The path to your model checkpoint file (`.pt`).
-    -   `NANOGPT_META_PATH`: The path to your tokenizer metadata file (`.pkl`).
-    -   `PROBE_SENTENCE`: The input sentence you want to visualize.
+    *Example `.env` configuration:*
+    ```
+    # Path to the NanoGPT model checkpoint file.
+    MODEL="/path/to/your/nanogpt/out/my_model/ckpt.pt"
 
-### 4. Model and Data Setup
+    # Path to the tokenizer metadata file (meta.pkl).
+    NANOGPT_META_PATH="/path/to/your/nanogpt/data/my_dataset/meta.pkl"
 
-This tool expects your NanoGPT model files to be organized in a specific way within the `visualizations/` directory.
+    # The sentence you want to generate a visualization for.
+    PROBE_SENTENCE="the quick brown fox"
+    ```
 
-1.  Create a directory for your model, for example: `visualizations/my_model_name/`.
-2.  Place your trained model checkpoint file and tokenizer metadata file in this directory:
-    - `visualizations/my_model_name/ckpt.pt`
-    - `visualizations/my_model_name/meta.pkl`
-
-Your directory structure should look like this:
-```
-visualizations/
-└── my_model_name/
-    ├── ckpt.pt
-    └── meta.pkl
-```
-
-### 5. Generate the Visualization
+### 4. Generate the Visualization
 
 Once your `.env` file is configured, you can run the main visualization script. The script will automatically load the variables from your `.env` file.
 
@@ -81,16 +72,16 @@ Once your `.env` file is configured, you can run the main visualization script. 
 python visualize_attention_flow_wordmaps.py
 ```
 
-The script will generate a comprehensive set of images and an `index.html` file inside a new directory based on your model's name, e.g., `visualizations/my_model_name/full_model_flow/`.
+The script will generate a comprehensive set of images and an `index.html` file inside a new directory within `visualizations/`. The output directory is named after your model checkpoint file.
 
-### 6. View and Deploy
+### 5. View and Deploy
 
-You can open the generated `index.html` file in your local browser to view the interactive report.
+You can open the generated `index.html` file (e.g., `visualizations/my_model_name/full_model_flow/index.html`) in your local browser to view the interactive report.
 
-This repository is configured with a GitHub Action to automatically deploy the contents of the `visualizations/knock_6_1_36_words/full_model_flow` directory to GitHub Pages. To use this for your own model:
+This repository is configured with a GitHub Action to automatically deploy the contents of a specified directory to GitHub Pages. To use this for your own model, you will need to:
 
-1.  Update the path in `.github/workflows/deploy.yml` to point to your model's output directory.
-2.  Commit and push all the generated files from your model's `full_model_flow` directory.
+1.  Commit and push all the generated files from your model's output directory.
+2.  Update the path in `.github/workflows/deploy.yml` to point to that directory.
 3.  The visualization will be available at `https://<your-username>.github.io/nanogpt-visualizer/`.
 
 ## Included Visualization Scripts
