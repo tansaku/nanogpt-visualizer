@@ -10,6 +10,8 @@ matplotlib = "*"
 wordcloud = "*"
 tiktoken = "*"
 python-dotenv = "*"
+scikit-learn = "*"
+umap-learn = "*"
 
 [dev-packages]
 
