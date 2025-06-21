@@ -226,6 +226,7 @@ def create_interactive_plot(
     title,
     probe_word_vectors=None,
     probe_word_labels=None,
+    original_probe_word_vectors_2d=None,
     previous_probe_word_vectors_2d=None,
     final_output_vector=None,
     top_k_vectors_2d=None,
@@ -268,8 +269,9 @@ def create_interactive_plot(
                 mode="text",
                 text=key_word_labels,
                 textposition="top center",
-                textfont=dict(size=9, color="gray"),
-                hoverinfo="none",
+                textfont=dict(size=10, color="#555"),
+                hoverinfo="text",
+                hovertext=key_word_labels,
                 name="Keywords",
             )
         )
@@ -323,11 +325,29 @@ def create_interactive_plot(
                     opacity=0.7,
                 )
 
-        # 5. Plot the probe words at their current positions
+        # 5. Plot the probe words at their current and original positions
         colors = plotly.colors.qualitative.Plotly
         for i, label in enumerate(probe_word_labels):
             x, y = probe_word_vectors_2d[i]
             color = colors[i % len(colors)]
+
+            # Plot original position as an 'x'
+            if original_probe_word_vectors_2d is not None:
+                orig_x, orig_y = original_probe_word_vectors_2d[i]
+                fig.add_trace(
+                    go.Scatter(
+                        x=[orig_x],
+                        y=[orig_y],
+                        mode="markers",
+                        marker=dict(symbol="x", color=color, size=8, opacity=0.8),
+                        hoverinfo="text",
+                        hovertext=f"{label} (Original Embedding)",
+                        name=f"{label} (Original)",
+                        showlegend=False,
+                    )
+                )
+
+            # Plot current position as a solid dot
             fig.add_trace(
                 go.Scatter(
                     x=[x],
@@ -370,7 +390,7 @@ def create_interactive_plot(
                 )
             )
 
-    # 7. Plot the final output vector (before projection to logits)
+    # 7. Plot the final output vector
     final_vector_2d = None
     if final_output_vector is not None:
         final_vector_2d = umap_reducer.transform([final_output_vector])[0]
@@ -393,26 +413,31 @@ def create_interactive_plot(
         )
 
     # 8. Handle Dot Product visualization
-    if dot_product_vector is not None and final_vector_2d is not None:
-        # This vector is not in the original space, it's a contribution vector.
-        # We can't directly plot it. Instead, we draw a line from the final
-        # output vector to the embedding of the predicted word.
-        fig.add_annotation(
-            x=dot_product_target_word_vec_2d[0],  # End at the target word
-            y=dot_product_target_word_vec_2d[1],
-            ax=final_vector_2d[0],  # Start at the final output vector
-            ay=final_vector_2d[1],
-            xref="x",
-            yref="y",
-            axref="x",
-            ayref="y",
-            showarrow=True,
-            arrowhead=3,
-            arrowsize=2,
-            arrowwidth=2,
-            arrowcolor="red",
-            opacity=0.8,
-        )
+    if dot_product_vector is not None:
+        # We need the final_vector_2d for the arrow start point
+        if final_output_vector is not None:
+            final_vector_2d = umap_reducer.transform([final_output_vector])[0]
+
+        if final_vector_2d is not None:
+            # This vector is not in the original space, it's a contribution vector.
+            # We can't directly plot it. Instead, we draw a line from the final
+            # output vector to the embedding of the predicted word.
+            fig.add_annotation(
+                x=dot_product_target_word_vec_2d[0],  # End at the target word
+                y=dot_product_target_word_vec_2d[1],
+                ax=final_vector_2d[0],  # Start at the final output vector
+                ay=final_vector_2d[1],
+                xref="x",
+                yref="y",
+                axref="x",
+                ayref="y",
+                showarrow=True,
+                arrowhead=3,
+                arrowsize=2,
+                arrowwidth=2,
+                arrowcolor="red",
+                opacity=0.8,
+            )
         # Highlight the target word's embedding
         fig.add_trace(
             go.Scatter(
@@ -433,15 +458,21 @@ def create_interactive_plot(
         )
 
     # Final layout adjustments
+    # Set fixed range to show the full vocabulary map initially
+    x_range = [base_map_2d[:, 0].min() - 1, base_map_2d[:, 0].max() + 1]
+    y_range = [base_map_2d[:, 1].min() - 1, base_map_2d[:, 1].max() + 1]
+
     fig.update_layout(
         title=dict(text=title, x=0.5),
         showlegend=True,
-        width=None,  # Auto-width
+        width=600,  # Give plots a fixed width
         height=700,
         xaxis_title="UMAP Dimension 1",
         yaxis_title="UMAP Dimension 2",
         margin=dict(l=40, r=40, b=40, t=80),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        xaxis=dict(range=x_range),
+        yaxis=dict(range=y_range),
     )
     fig.update_xaxes(gridcolor="lightgrey", zerolinecolor="grey")
     fig.update_yaxes(gridcolor="lightgrey", zerolinecolor="grey")
@@ -543,6 +574,9 @@ def main():
 
     # NEW: Get both token-only and combined representations
     token_only_reps = get_token_only_representations(token_ids, wte)
+    original_probe_word_vectors_2d = umap_reducer.transform(
+        token_only_reps
+    )  # Get original 2D positions
     x = get_representations(
         token_ids, wte, wpe
     )  # This is combined, becomes input to Block 0
@@ -707,6 +741,7 @@ def main():
                         "After Final Layer Normalisation"
                     ],
                     probe_word_labels=words,
+                    original_probe_word_vectors_2d=original_probe_word_vectors_2d,
                     key_word_vectors_2d=key_word_vectors_2d,
                     key_word_labels=key_words_to_highlight,
                 )
@@ -721,6 +756,7 @@ def main():
                     probe_word_labels=words,
                     umap_reducer=umap_reducer,
                     title=plot_title,
+                    original_probe_word_vectors_2d=original_probe_word_vectors_2d,
                     previous_probe_word_vectors_2d=previous_vectors_2d,
                     key_word_vectors_2d=key_word_vectors_2d,
                     key_word_labels=key_words_to_highlight,
@@ -868,6 +904,14 @@ def generate_html_page(
         layers_html += f"""
         <details open>
             <summary><h2>Next Token Prediction</h2></summary>
+            <div style="padding: 1em; text-align: left; max-width: 80%; margin: 1em auto; background: #fff8e1; border-left: 5px solid #ffc107; border-radius: 4px;">
+                <strong>How to Interpret the Final Plots:</strong>
+                <ul style="margin-top: 0.5em;">
+                    <li>The <strong>'Top 10 Predictions'</strong> plot shows the location of the best candidate words in the vocabulary space, relative to the model's final output state (the red star).</li>
+                    <li>The <strong>'Dot Product Breakdown'</strong> plot shows the final step. The red arrow from the 'Final Output' to the predicted word ('{top_prediction_word}') illustrates the relationship that matters: the dot product.</li>
+                    <li><strong>Important:</strong> Proximity in this 2D UMAP projection does not guarantee a high dot product score in the original high-dimensional space. The UMAP plot is for visualizing the general structure, not for definitively judging which token will be chosen. The highest logit (from the dot product) wins.</li>
+                </ul>
+            </div>
             {prediction_html}
         </details>
         """
@@ -887,7 +931,7 @@ def generate_html_page(
             .container {{ max-width: 98%; margin: auto; }}
             .table-container {{ overflow-x: auto; padding: 1em; }}
             table {{ width: 100%; border-collapse: collapse; margin-top: 1em; }}
-            th, td {{ border: 1px solid #ddd; padding: 0; text-align: center; vertical-align: middle; min-width: 150px; }}
+            th, td {{ border: 1px solid #ddd; padding: 0; text-align: center; vertical-align: middle; min-width: 620px; }}
             th {{ padding: 8px; background-color: #f8f9fa; font-size: 1em; }}
             .word-label {{ font-weight: bold; font-size: 1.1em; }}
             .attention-bar-container {{ display: flex; flex-direction: column; gap: 4px; }}
@@ -903,6 +947,9 @@ def generate_html_page(
         <div class="container">
             <h1>Interactive Token Journey Visualization</h1>
             <p><strong>Model:</strong> {model_name}<br><strong>Probe Sentence:</strong> "{probe_sentence}"</p>
+            <p style="text-align:center; max-width: 80%; margin: 1em auto; font-style: italic; color: #666;">
+                Each plot below is interactive. You can pan, zoom, and hover over points to see the corresponding words. The initial view shows the entire vocabulary space. For each probe word, the solid dot is its current position, and the 'x' is its original embedding position.
+            </p>
             {layers_html}
         </div>
     </body>
