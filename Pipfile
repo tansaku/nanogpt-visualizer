@@ -12,6 +12,7 @@ tiktoken = "*"
 python-dotenv = "*"
 scikit-learn = "*"
 umap-learn = "*"
+plotly = "*"
 
 [dev-packages]
 

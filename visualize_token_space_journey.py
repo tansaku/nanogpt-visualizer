@@ -13,11 +13,9 @@ import numpy as np
 import pickle
 import re
 from dotenv import load_dotenv
-from PIL import Image, ImageDraw, ImageFont
-from wordcloud import WordCloud
 import json
-import matplotlib.pyplot as plt
-import io
+import plotly.graph_objects as go
+import plotly.colors
 import html
 import umap
 from sklearn.decomposition import PCA
@@ -218,205 +216,238 @@ def calculate_transformer_block_flow(x, weights, n_head):
     }, attn_weights
 
 
-# --- Word Cloud and Grid Generation ---
+# --- Interactive Plot Generation ---
 
 
-def load_dimension_wordmaps(model_dir, n_embd):
-    """Loads all pre-generated dimension wordmap images."""
-    wordmap_dir = os.path.join("visualizations", model_dir, "embedding_wordmaps")
-    if not os.path.exists(wordmap_dir):
-        print(f"ERROR: Dimension wordmaps not found in {wordmap_dir}")
-        print("Please run visualize_tokens.py first.")
-        return None, None
-
-    wordmap_images = {}
-    wordmap_size = None
-    for dim in range(n_embd):
-        path = os.path.join(wordmap_dir, f"dimension_{dim}.png")
-        if os.path.exists(path):
-            img = Image.open(path)
-            if wordmap_size is None:
-                wordmap_size = img.size
-            wordmap_images[dim] = img
-
-    if not wordmap_images:
-        print("No wordmap images found.")
-        return None, None
-
-    print(f"Loaded {len(wordmap_images)} dimension wordmaps.")
-    return wordmap_images, wordmap_size
-
-
-def create_grid_for_vector(
-    vector, n_embd, wordmap_images, wordmap_size, all_values_for_opacity_scaling
-):
-    """Creates a 6x6 grid visualization for a single n_embd vector."""
-    grid_cols = int(np.ceil(np.sqrt(n_embd)))
-    grid_rows = int(np.ceil(n_embd / grid_cols))
-
-    # Scale down wordmaps for the grid
-    thumb_size = 60
-    thumb_w = int(wordmap_size[0] * (thumb_size / wordmap_size[1]))
-    thumb_h = thumb_size
-
-    canvas_w = grid_cols * thumb_w
-    canvas_h = grid_rows * thumb_h
-    canvas = Image.new("RGB", (canvas_w, canvas_h), "white")
-
-    # Use percentile-based mapping for better contrast, same as in sentence_flow
-    all_abs_values = np.abs(all_values_for_opacity_scaling.flatten())
-    min_val, max_val = (
-        all_values_for_opacity_scaling.min(),
-        all_values_for_opacity_scaling.max(),
-    )
-
-    for dim in range(n_embd):
-        if dim not in wordmap_images:
-            continue
-
-        activation = vector[dim]
-
-        # Calculate opacity using percentile-based approach for better contrast
-        if max_val > min_val:
-            percentile = np.mean(all_abs_values <= abs(activation))
-            opacity = np.power(
-                percentile, 0.5
-            )  # Use square root to boost mid-range values
-            opacity = max(0.1, min(1.0, opacity))  # Clamp and set a minimum visibility
-        else:
-            opacity = 0.5
-
-        # Get the wordmap image and apply transformations
-        wordmap_img = wordmap_images[dim].resize(
-            (thumb_w, thumb_h), Image.Resampling.LANCZOS
-        )
-        if wordmap_img.mode != "RGBA":
-            wordmap_img = wordmap_img.convert("RGBA")
-
-        # For negative activations, invert the colors for consistency with sentence_flow.py
-        if activation < 0:
-            img_array = np.array(wordmap_img)
-            # Invert RGB channels, but leave alpha untouched
-            img_array[:, :, :3] = 255 - img_array[:, :, :3]
-            wordmap_img = Image.fromarray(img_array, "RGBA")
-
-        # Apply opacity
-        alpha = wordmap_img.split()[-1]
-        alpha = alpha.point(lambda p: int(p * opacity))
-        wordmap_img.putalpha(alpha)
-
-        # Paste onto canvas
-        row, col = dim // grid_cols, dim % grid_cols
-        x, y = col * thumb_w, row * thumb_h
-        canvas.paste(wordmap_img, (x, y), wordmap_img)
-
-    return canvas
-
-
-def create_2d_journey_plot(
+def create_interactive_plot(
     base_map_2d,
     vocab_itos,
-    probe_word_indices,
-    probe_word_vectors,
-    probe_word_labels,
     umap_reducer,
     title,
+    probe_word_vectors=None,
+    probe_word_labels=None,
     previous_probe_word_vectors_2d=None,
     final_output_vector=None,
+    top_k_vectors_2d=None,
+    top_k_labels=None,
+    dot_product_vector=None,
+    dot_product_target_word_vec_2d=None,
+    dot_product_target_word_label=None,
     key_word_vectors_2d=None,
     key_word_labels=None,
 ):
-    """Creates a 2D scatter plot showing the journey of probe words."""
-    fig, ax = plt.subplots(figsize=(12, 12), dpi=150)
+    """
+    Creates a single, versatile interactive 2D scatter plot using Plotly.
+
+    This function can handle:
+    - Standard token journey steps.
+    - Final logit predictions plot.
+    - Dot product breakdown plot.
+    """
+    fig = go.Figure()
 
     # 1. Plot the entire vocabulary as a background
-    ax.scatter(base_map_2d[:, 0], base_map_2d[:, 1], c="lightgray", alpha=0.1, s=10)
-
-    # NEW: Plot key vocabulary words for context
-    if key_word_vectors_2d is not None and key_word_labels:
-        ax.scatter(
-            key_word_vectors_2d[:, 0],
-            key_word_vectors_2d[:, 1],
-            c="gray",
-            alpha=0.4,
-            s=25,
-            marker="x",
+    fig.add_trace(
+        go.Scatter(
+            x=base_map_2d[:, 0],
+            y=base_map_2d[:, 1],
+            mode="markers",
+            marker=dict(color="lightgray", size=3, opacity=0.3),
+            hoverinfo="text",
+            text=[f"Vocab: {word}" for word in vocab_itos],
+            name="Vocabulary",
         )
-        for i, label in enumerate(key_word_labels):
-            ax.text(
-                key_word_vectors_2d[i, 0] + 0.05,
-                key_word_vectors_2d[i, 1] + 0.05,
-                label,
-                fontsize=8,
-                color="gray",
-                alpha=0.7,
-            )
-
-    # 2. Project the current probe word vectors into 2D space
-    probe_word_vectors_2d = (
-        umap_reducer.transform(probe_word_vectors)
-        if probe_word_vectors.ndim > 1
-        else umap_reducer.transform([probe_word_vectors])
     )
 
-    # 3. Plot the probe words
-    colors = plt.cm.rainbow(np.linspace(0, 1, len(probe_word_labels)))
-    for i, label in enumerate(probe_word_labels):
-        x, y = probe_word_vectors_2d[i]
-        ax.scatter(x, y, color=colors[i], s=150, label=label, edgecolors="black")
-        ax.text(x + 0.05, y + 0.05, label, fontsize=9, color=colors[i], weight="bold")
+    # 2. Plot key vocabulary words for context
+    if key_word_vectors_2d is not None and key_word_labels:
+        fig.add_trace(
+            go.Scatter(
+                x=key_word_vectors_2d[:, 0],
+                y=key_word_vectors_2d[:, 1],
+                mode="text",
+                text=key_word_labels,
+                textposition="top center",
+                textfont=dict(size=9, color="gray"),
+                hoverinfo="none",
+                name="Keywords",
+            )
+        )
 
-        # 4. If previous positions are provided, draw arrows and 'ghost' dots
+    # 3. Project the current probe word vectors (if this is a journey step)
+    probe_word_vectors_2d = None
+    if probe_word_vectors is not None:
+        probe_word_vectors_2d = (
+            umap_reducer.transform(probe_word_vectors)
+            if probe_word_vectors.ndim > 1
+            else umap_reducer.transform([probe_word_vectors])
+        )
+
+        # 4. Draw arrows and 'ghost' dots from previous positions
         if previous_probe_word_vectors_2d is not None:
-            prev_x, prev_y = previous_probe_word_vectors_2d[i]
-            # Draw a 'ghost' dot at the previous location
-            ax.scatter(prev_x, prev_y, color=colors[i], s=50, alpha=0.3)
-            ax.annotate(
-                "",
-                xy=(x, y),
-                xytext=(prev_x, prev_y),
-                arrowprops=dict(
-                    arrowstyle="->",
-                    color=colors[i],
-                    lw=1.5,
-                    alpha=0.7,
-                ),
+            colors = plotly.colors.qualitative.Plotly
+            for i in range(len(probe_word_vectors_2d)):
+                color = colors[i % len(colors)]
+                # Ghost dot
+                fig.add_trace(
+                    go.Scatter(
+                        x=[previous_probe_word_vectors_2d[i, 0]],
+                        y=[previous_probe_word_vectors_2d[i, 1]],
+                        mode="markers",
+                        marker=dict(
+                            color=color,
+                            symbol="circle-open",
+                            size=10,
+                            opacity=0.6,
+                            line=dict(width=1.5),
+                        ),
+                        hoverinfo="none",
+                        showlegend=False,
+                    )
+                )
+                # Arrow
+                fig.add_annotation(
+                    x=probe_word_vectors_2d[i, 0],
+                    y=probe_word_vectors_2d[i, 1],
+                    ax=previous_probe_word_vectors_2d[i, 0],
+                    ay=previous_probe_word_vectors_2d[i, 1],
+                    xref="x",
+                    yref="y",
+                    axref="x",
+                    ayref="y",
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowsize=1.5,
+                    arrowwidth=1,
+                    arrowcolor=color,
+                    opacity=0.7,
+                )
+
+        # 5. Plot the probe words at their current positions
+        colors = plotly.colors.qualitative.Plotly
+        for i, label in enumerate(probe_word_labels):
+            x, y = probe_word_vectors_2d[i]
+            color = colors[i % len(colors)]
+            fig.add_trace(
+                go.Scatter(
+                    x=[x],
+                    y=[y],
+                    mode="markers+text",
+                    marker=dict(
+                        color=color, size=12, line=dict(width=2, color="DarkSlateGrey")
+                    ),
+                    text=label,
+                    textposition="top right",
+                    textfont=dict(color=color, size=12),
+                    hoverinfo="text",
+                    hovertext=f"Probe: {label}",
+                    name=label,
+                    showlegend=True,
+                )
             )
 
-    # NEW: Plot the final output vector if provided
+    # 6. Plot the Top-K predicted tokens (for the logit plot)
+    if top_k_vectors_2d is not None:
+        colors = plotly.colors.sequential.Viridis
+        for i, label in enumerate(top_k_labels):
+            x, y = top_k_vectors_2d[i]
+            size = 20 - i * 1.5  # Make top prediction largest
+            color = colors[int(i * (len(colors) / len(top_k_labels)))]
+            fig.add_trace(
+                go.Scatter(
+                    x=[x],
+                    y=[y],
+                    mode="markers",
+                    marker=dict(
+                        color=color,
+                        size=size,
+                        line=dict(width=1, color="black"),
+                    ),
+                    hoverinfo="text",
+                    hovertext=f"#{i+1}: {label}",
+                    name=f"#{i+1}: {label}",
+                    showlegend=True,
+                )
+            )
+
+    # 7. Plot the final output vector (before projection to logits)
+    final_vector_2d = None
     if final_output_vector is not None:
         final_vector_2d = umap_reducer.transform([final_output_vector])[0]
-        ax.scatter(
-            final_vector_2d[0],
-            final_vector_2d[1],
-            color="black",
-            s=250,
-            marker="*",
-            label="Model's Final Output",
-            zorder=10,
+        fig.add_trace(
+            go.Scatter(
+                x=[final_vector_2d[0]],
+                y=[final_vector_2d[1]],
+                mode="markers+text",
+                marker=dict(
+                    symbol="star",
+                    color="red",
+                    size=15,
+                    line=dict(width=1, color="black"),
+                ),
+                text=["Final Output"],
+                textposition="top right",
+                name="Model's Final Output",
+                showlegend=True,
+            )
         )
-        ax.text(
-            final_vector_2d[0] + 0.05,
-            final_vector_2d[1] + 0.05,
-            "Final Output",
-            fontsize=12,
-            color="black",
-            weight="heavy",
+
+    # 8. Handle Dot Product visualization
+    if dot_product_vector is not None and final_vector_2d is not None:
+        # This vector is not in the original space, it's a contribution vector.
+        # We can't directly plot it. Instead, we draw a line from the final
+        # output vector to the embedding of the predicted word.
+        fig.add_annotation(
+            x=dot_product_target_word_vec_2d[0],  # End at the target word
+            y=dot_product_target_word_vec_2d[1],
+            ax=final_vector_2d[0],  # Start at the final output vector
+            ay=final_vector_2d[1],
+            xref="x",
+            yref="y",
+            axref="x",
+            ayref="y",
+            showarrow=True,
+            arrowhead=3,
+            arrowsize=2,
+            arrowwidth=2,
+            arrowcolor="red",
+            opacity=0.8,
+        )
+        # Highlight the target word's embedding
+        fig.add_trace(
+            go.Scatter(
+                x=[dot_product_target_word_vec_2d[0]],
+                y=[dot_product_target_word_vec_2d[1]],
+                mode="markers",
+                marker=dict(
+                    symbol="diamond",
+                    color="red",
+                    size=16,
+                    line=dict(width=2, color="black"),
+                ),
+                hoverinfo="text",
+                hovertext=f"Predicted: {dot_product_target_word_label}",
+                name=f"Predicted: {dot_product_target_word_label}",
+                showlegend=True,
+            )
         )
 
-    ax.set_title(title, fontsize=16)
-    ax.set_xlabel("UMAP Dimension 1")
-    ax.set_ylabel("UMAP Dimension 2")
-    ax.legend(loc="best")
-    ax.grid(True, linestyle="--", alpha=0.5)
+    # Final layout adjustments
+    fig.update_layout(
+        title=dict(text=title, x=0.5),
+        showlegend=True,
+        width=None,  # Auto-width
+        height=700,
+        xaxis_title="UMAP Dimension 1",
+        yaxis_title="UMAP Dimension 2",
+        margin=dict(l=40, r=40, b=40, t=80),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    fig.update_xaxes(gridcolor="lightgrey", zerolinecolor="grey")
+    fig.update_yaxes(gridcolor="lightgrey", zerolinecolor="grey")
 
-    plt.tight_layout()
-
-    buf = io.BytesIO()
-    plt.savefig(buf, format="png")
-    buf.seek(0)
-    plt.close(fig)
-    return Image.open(buf), probe_word_vectors_2d
+    plot_html = fig.to_html(full_html=False, include_plotlyjs=False)
+    return plot_html, probe_word_vectors_2d
 
 
 # --- Main Execution ---
@@ -615,8 +646,8 @@ def main():
         ]
     )
 
-    # Generate grid images for each step, each word, each layer
-    image_paths = {}
+    # Generate interactive plots for each step, each word, each layer
+    plot_htmls = {}
 
     # Define the order of layers for processing and generating HTML
     layer_keys = ["input"] + [f"layer_{i}" for i in range(num_layers)] + ["final"]
@@ -628,43 +659,64 @@ def main():
             continue
 
         representations = all_reps_by_layer[layer_key]
-        print(f"Generating images for: {layer_key}")
+        print(f"Generating plots for: {layer_key}")
         for step_name, all_word_vectors in representations.items():
+            plot_title = f"{step_name} (Layer: {layer_key})"
+            plot_html, current_vectors_2d = None, None
 
-            # Special handling for the final logit layer
+            # Special handling for different plot types
             if step_name == "Final Linear Layer":
-                # For logits, we can't project them. Let's create a special plot.
-                # Here we will plot the top K predicted token embeddings on the UMAP
-
+                # Plot the top K predicted token embeddings on the UMAP
                 last_token_logits = all_word_vectors[-1]
                 top_k_indices = np.argsort(-last_token_logits)[:10]
                 top_k_words = [itos[i] for i in top_k_indices]
                 top_k_vectors_2d = base_map_2d[top_k_indices]
-
                 final_output_vector = all_reps_by_layer["final"][
                     "After Final Layer Normalisation"
                 ][-1]
 
-                grid_img, _ = create_logit_plot(
-                    base_map_2d,
-                    top_k_vectors_2d,
-                    top_k_words,
-                    "Top 10 Predictions on Vocab Map",
-                    key_word_vectors_2d,
-                    key_words_to_highlight,
-                    final_output_vector,
-                    umap_reducer,
+                plot_html, _ = create_interactive_plot(
+                    base_map_2d=base_map_2d,
+                    vocab_itos=itos,
+                    umap_reducer=umap_reducer,
+                    title="Top 10 Predictions on Vocab Map",
+                    top_k_vectors_2d=top_k_vectors_2d,
+                    top_k_labels=top_k_words,
+                    final_output_vector=final_output_vector,
+                    key_word_vectors_2d=key_word_vectors_2d,
+                    key_word_labels=key_words_to_highlight,
+                )
+
+            elif step_name.startswith("Dot Product Breakdown"):
+                final_output_vector = all_reps_by_layer["final"][
+                    "After Final Layer Normalisation"
+                ][-1]
+                predicted_word_idx = stoi[top_prediction_word]
+                predicted_word_vec_2d = base_map_2d[predicted_word_idx]
+
+                plot_html, _ = create_interactive_plot(
+                    base_map_2d=base_map_2d,
+                    vocab_itos=itos,
+                    umap_reducer=umap_reducer,
+                    title=plot_title,
+                    dot_product_vector=all_word_vectors[-1],
+                    dot_product_target_word_vec_2d=predicted_word_vec_2d,
+                    dot_product_target_word_label=top_prediction_word,
+                    final_output_vector=final_output_vector,
+                    probe_word_vectors=all_reps_by_layer["final"][
+                        "After Final Layer Normalisation"
+                    ],
+                    probe_word_labels=words,
+                    key_word_vectors_2d=key_word_vectors_2d,
+                    key_word_labels=key_words_to_highlight,
                 )
 
             else:
-                # Use the new 2D plot generation function
-                plot_title = f"{step_name} (Layer: {layer_key})"
+                # Standard journey plot
                 previous_vectors_2d = previous_step_vectors_2d.get(layer_key)
-
-                grid_img, current_vectors_2d = create_2d_journey_plot(
+                plot_html, current_vectors_2d = create_interactive_plot(
                     base_map_2d=base_map_2d,
                     vocab_itos=itos,
-                    probe_word_indices=token_ids,
                     probe_word_vectors=all_word_vectors,
                     probe_word_labels=words,
                     umap_reducer=umap_reducer,
@@ -673,34 +725,22 @@ def main():
                     key_word_vectors_2d=key_word_vectors_2d,
                     key_word_labels=key_words_to_highlight,
                 )
-                # Store the current vectors for the next step in this layer
-                previous_step_vectors_2d[layer_key] = current_vectors_2d
+                if current_vectors_2d is not None:
+                    previous_step_vectors_2d[layer_key] = current_vectors_2d
 
-            # Sanitize step_name for filename
-            sanitized_step_name = (
-                step_name.replace("'", "")
-                .replace(" ", "_")
-                .replace("(", "")
-                .replace(")", "")
-            )
-            # We create one image per step, not per word
-            filename = f"{layer_key}_{sanitized_step_name}.png"
-            path = os.path.join(output_dir, filename)
-            grid_img.save(path)
+            # Store the generated HTML for the plot
+            if plot_html:
+                if layer_key not in plot_htmls:
+                    plot_htmls[layer_key] = {}
+                plot_htmls[layer_key][step_name] = plot_html
 
-            # Update image_paths to have a different structure
-            # Key by layer and step, since we have one image per step now
-            if layer_key not in image_paths:
-                image_paths[layer_key] = {}
-            image_paths[layer_key][step_name] = filename
-
-    # Generate HTML page to display everything in a grid
+    # Generate HTML page to display everything
     generate_html_page(
         output_dir,
         model_dir,
         probe_sentence,
         words,
-        image_paths,
+        plot_htmls,
         all_reps_by_layer,
         all_attn_by_layer,
         final_prediction_data,
@@ -708,126 +748,7 @@ def main():
     )
 
     print("\nDone! Full model flow visualization created.")
-    print(f"View the interactive summary at: {output_dir}/index.html")
-
-
-def create_logit_plot(
-    base_map_2d,
-    top_k_vectors_2d,
-    top_k_labels,
-    title,
-    key_word_vectors_2d,
-    key_word_labels,
-    final_output_vector,
-    umap_reducer,
-):
-    """Creates a 2D plot showing the location of top predicted tokens."""
-    fig, ax = plt.subplots(figsize=(12, 12), dpi=150)
-
-    # 1. Plot the entire vocabulary and key words as a background
-    ax.scatter(base_map_2d[:, 0], base_map_2d[:, 1], c="lightgray", alpha=0.1, s=10)
-    if key_word_vectors_2d is not None and key_word_labels:
-        ax.scatter(
-            key_word_vectors_2d[:, 0],
-            key_word_vectors_2d[:, 1],
-            c="gray",
-            alpha=0.4,
-            s=25,
-            marker="x",
-        )
-        for i, label in enumerate(key_word_labels):
-            ax.text(
-                key_word_vectors_2d[i, 0] + 0.05,
-                key_word_vectors_2d[i, 1] + 0.05,
-                label,
-                fontsize=8,
-                color="gray",
-                alpha=0.7,
-            )
-
-    # 2. Plot the Top-K predicted tokens
-    colors = plt.cm.viridis(np.linspace(0.8, 0, len(top_k_labels)))
-    for i, label in enumerate(top_k_labels):
-        x, y = top_k_vectors_2d[i]
-        size = 200 - i * 15  # Make top prediction largest
-        ax.scatter(
-            x, y, color=colors[i], s=size, label=f"#{i+1}: {label}", edgecolors="black"
-        )
-        ax.text(x + 0.05, y + 0.05, label, fontsize=10, color=colors[i], weight="bold")
-
-    # 3. Plot the final output vector (before projection to logits)
-    final_vector_2d = umap_reducer.transform([final_output_vector])[0]
-    ax.scatter(
-        final_vector_2d[0],
-        final_vector_2d[1],
-        color="red",
-        s=300,
-        marker="*",
-        label="Model's Final Output",
-        zorder=10,
-        edgecolors="black",
-    )
-    ax.text(
-        final_vector_2d[0] + 0.05,
-        final_vector_2d[1] + 0.05,
-        "Final Output",
-        fontsize=12,
-        color="red",
-        weight="heavy",
-    )
-
-    ax.set_title(title, fontsize=16)
-    ax.set_xlabel("UMAP Dimension 1")
-    ax.set_ylabel("UMAP Dimension 2")
-    ax.legend(loc="best")
-    ax.grid(True, linestyle="--", alpha=0.5)
-
-    plt.tight_layout()
-
-    buf = io.BytesIO()
-    plt.savefig(buf, format="png")
-    buf.seek(0)
-    plt.close(fig)
-    return Image.open(buf), None
-
-
-def create_logits_barchart(logit_vector, itos, top_k=5):
-    """Creates a bar chart image of the top k logits."""
-    top_k_indices = np.argsort(-logit_vector)[:top_k]
-    top_k_logits = logit_vector[top_k_indices]
-    top_k_words = [itos.get(i, f"unk_{i}") for i in top_k_indices]
-
-    # Create plot
-    fig, ax = plt.subplots(figsize=(3, 2), dpi=150)
-    bars = ax.barh(np.arange(top_k), top_k_logits, color="skyblue")
-    ax.set_yticks(np.arange(top_k))
-    ax.set_yticklabels(top_k_words, fontsize=8)
-    ax.invert_yaxis()  # Highest on top
-    ax.tick_params(axis="x", labelsize=8)
-    ax.set_xlabel("Logit Value", fontsize=8)
-
-    # Add value labels
-    for bar in bars:
-        width = bar.get_width()
-        ax.text(
-            width,
-            bar.get_y() + bar.get_height() / 2,
-            f" {width:.2f}",
-            va="center",
-            ha="left" if width > 0 else "right",
-            fontsize=7,
-        )
-
-    plt.tight_layout()
-
-    # Adjust x-axis limit to prevent label overlap
-    _, xmax = plt.xlim()
-    plt.xlim(xmax=xmax * 1.15)
-
-    buf = io.BytesIO()
-    plt.savefig(buf, format="png", dpi=100)
-    buf.seek(0)
-    return Image.open(buf)
+    print(f"View the interactive summary at: {os.path.join(output_dir, 'index.html')}")
 
 
 def get_code_snippet_dict(top_prediction_word=""):
@@ -875,24 +796,13 @@ def generate_html_page(
     model_name,
     probe_sentence,
     words,
-    image_paths,
+    plot_htmls,
     all_reps_by_layer,
     all_attn_by_layer,
     final_prediction_data,
     top_prediction_word,
 ):
     """Generates an HTML page with collapsible sections for each layer."""
-
-    # Create a JSON-serializable version of the data by converting numpy arrays to lists
-    serializable_reps = {
-        layer_key: {step_name: vectors.tolist() for step_name, vectors in reps.items()}
-        for layer_key, reps in all_reps_by_layer.items()
-    }
-    all_data_json = json.dumps(serializable_reps)
-    words_json = json.dumps(words)
-    image_paths_json = json.dumps(image_paths)
-    code_snippets_dict = get_code_snippet_dict(top_prediction_word)
-    code_snippets_json = json.dumps(code_snippets_dict)
 
     layers_html = ""
     num_layers = sum(1 for key in all_reps_by_layer if key.startswith("layer_"))
@@ -911,31 +821,18 @@ def generate_html_page(
             continue
 
         summary_title = html_titles.get(layer_key, "Details")
-        # Keep the first block, input, and final projection sections open by default
         is_open = layer_key in ["input", "final"] or layer_key == "layer_0"
         details_options = "open" if is_open else ""
 
         representations = all_reps_by_layer[layer_key]
-        attention_weights = all_attn_by_layer.get(layer_key)
 
-        # Simplified header, as we now have one image per column
         header_cols = list(representations.keys())
-
-        # Table header
         table_head_html = "".join(f"<th>{html.escape(col)}</th>" for col in header_cols)
 
-        # Table body - now we have only one row per layer section
         row_html = "<tr>"
         for step_name in header_cols:
-            # Get the single image for this step
-            img_path = image_paths.get(layer_key, {}).get(step_name, "")
-            safe_title = html.escape(step_name)
-
-            # The modal click might not be relevant anymore or needs rethinking.
-            # For now, let's just display the image.
-            row_html += (
-                f"<td><img src='{img_path}' title='{safe_title}' loading='lazy'></td>"
-            )
+            plot_div = plot_htmls.get(layer_key, {}).get(step_name, "")
+            row_html += f"<td>{plot_div}</td>"
         row_html += "</tr>"
         table_body_html = row_html
 
@@ -952,56 +849,21 @@ def generate_html_page(
         """
 
     # Generate HTML for Final Prediction
+    prediction_html = ""
     if final_prediction_data:
-        prediction_html = "<div class='prediction-container'>"
-
-        # New table-based layout for top predictions with embedding visualizations
-        if "embedding_img_paths" in final_prediction_data:
-            prediction_html += """
-            <p style="text-align:left; max-width: 80%; margin: 1em auto; font-style: italic; color: #666;">
-                Below are the raw embedding representations for the top 10 potential next tokens.
-                You can compare the visualization for the top prediction with the
-                'Dot Product Breakdown' visualization in the 'Final Projection' section above.
-                The 'Dot Product Breakdown' shows how the model's final internal state
-                aligns with a token's embedding to produce a high logit score.
-            </p>
-            <table class='data-table' style='margin: 1em auto; width: 80%;'>
-               <thead><tr><th>Token</th><th>Probability</th><th>Embedding Visualization</th></tr></thead>
-               <tbody>
+        prediction_html += "<div class='prediction-container'>"
+        prediction_html += "<div class='prediction-bar-container'>"
+        for word, prob in zip(
+            final_prediction_data["words"], final_prediction_data["probabilities"]
+        ):
+            prediction_html += f"""
+                <div class="bar-row">
+                    <span class="bar-label">{html.escape(word)}</span>
+                    <div class="bar" style="width: {prob*100*4}px; background-color: rgba(220, 53, 69, {0.2 + prob*0.8});"></div>
+                    <span class="bar-value">{(prob*100):.2f}%</span>
+                </div>
             """
-            for i, word in enumerate(final_prediction_data["words"]):
-                prob = final_prediction_data["probabilities"][i]
-                img_path = final_prediction_data["embedding_img_paths"][i]
-                safe_word = html.escape(word)
-                prediction_html += f"""
-                    <tr>
-                        <td class='word-label'>{safe_word}</td>
-                        <td>
-                            <div class="prediction-prob-container">
-                                <div class="bar" style="width: {prob*100*3}px; background-color: rgba(220, 53, 69, {0.2 + prob*0.8});"></div>
-                                <span class="bar-value" style="margin-left: 5px;">{(prob*100):.2f}%</span>
-                            </div>
-                        </td>
-                        <td><img src='{img_path}' loading='lazy' style='max-width: 200px; height: auto;' title='Embedding for "{safe_word}"'></td>
-                    </tr>
-                """
-            prediction_html += "</tbody></table>"
-        else:
-            # Fallback to old bar chart view
-            prediction_html += "<div class='prediction-bar-container'>"
-            for word, prob in zip(
-                final_prediction_data["words"], final_prediction_data["probabilities"]
-            ):
-                prediction_html += f"""
-                    <div class="bar-row">
-                        <span class="bar-label">{html.escape(word)}</span>
-                        <div class="bar" style="width: {prob*100*4}px; background-color: rgba(220, 53, 69, {0.2 + prob*0.8});"></div>
-                        <span class="bar-value">{(prob*100):.2f}%</span>
-                    </div>
-                """
-            prediction_html += "</div>"
-
-        prediction_html += "</div>"
+        prediction_html += "</div></div>"
 
         layers_html += f"""
         <details open>
@@ -1016,6 +878,7 @@ def generate_html_page(
     <head>
         <meta charset="UTF-8">
         <title>Full Model Flow Visualization</title>
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
         <style>
             body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; margin: 2em; background: #f0f2f5; color: #333; }}
             h1, h2, p {{ text-align: center; }}
@@ -1024,78 +887,24 @@ def generate_html_page(
             .container {{ max-width: 98%; margin: auto; }}
             .table-container {{ overflow-x: auto; padding: 1em; }}
             table {{ width: 100%; border-collapse: collapse; margin-top: 1em; }}
-            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: middle; min-width: 150px; }}
-            th {{ background-color: #f8f9fa; font-size: 1em; }}
-            img {{ max-width: 100%; height: auto; border-radius: 4px; cursor: pointer; }}
+            th, td {{ border: 1px solid #ddd; padding: 0; text-align: center; vertical-align: middle; min-width: 150px; }}
+            th {{ padding: 8px; background-color: #f8f9fa; font-size: 1em; }}
             .word-label {{ font-weight: bold; font-size: 1.1em; }}
-            .pos {{ font-weight: normal; color: #666; font-size: 0.8em; }}
-            .attention-cell {{ min-width: 250px; }}
             .attention-bar-container {{ display: flex; flex-direction: column; gap: 4px; }}
-            .bar-row {{ display: flex; align-items: center; gap: 5px; font-size: 0.8em; }}
-            .bar-label {{ width: 80px; text-align: right; }}
-            .bar {{ height: 16px; border-radius: 3px; border: 1px solid #eee; }}
+            .bar-row {{ display: flex; align-items: center; gap: 5px; font-size: 0.9em; }}
+            .bar-label {{ width: 100px; text-align: right; }}
+            .bar {{ height: 18px; border-radius: 3px; border: 1px solid #eee; }}
             .bar-value {{ font-family: monospace; }}
-
-            /* Modal Styles */
-            .modal {{
-                display: none; position: fixed; z-index: 1000; left: 0; top: 0;
-                width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.7);
-            }}
-            .modal-content {{
-                background-color: #fefefe; margin: 5% auto; padding: 20px;
-                border: 1px solid #888; width: 80%; max-width: 1200px;
-                border-radius: 8px;
-            }}
-            .modal-header {{
-                display: flex; justify-content: space-between; align-items: center;
-                border-bottom: 1px solid #ddd; padding-bottom: 10px;
-            }}
-            .modal-header h2 {{ text-align: left; }}
-            .close {{ color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; }}
-            .modal-body {{ display: flex; gap: 20px; margin-top: 20px; }}
-            .modal-image-container {{ flex: 1; }}
-            .modal-data-container {{ flex: 1; }}
-            .code-snippet {{
-                background: #2d2d2d; color: #dcdcdc; padding: 15px;
-                border-radius: 5px; font-family: monospace; white-space: pre;
-            }}
-            .data-table {{ width: 100%; border-collapse: collapse; font-size: 1em; }}
-            .data-table th, .data-table td {{ border: 1px solid #eee; padding: 8px; text-align: left; vertical-align: middle; }}
-            .data-table th {{ background-color: #f2f2f2; }}
-
-            .prediction-prob-container {{
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }}
-
             .prediction-container {{ padding: 2em; }}
             .prediction-bar-container {{ display: flex; flex-direction: column; gap: 6px; max-width: 500px; margin: auto; }}
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>Full Model Flow Visualization</h1>
+            <h1>Interactive Token Journey Visualization</h1>
             <p><strong>Model:</strong> {model_name}<br><strong>Probe Sentence:</strong> "{probe_sentence}"</p>
             {layers_html}
         </div>
-
-        <!-- Data Injection using JSON script tags -->
-        <script id="all-data" type="application/json">{all_data_json}</script>
-        <script id="all-words" type="application/json">{words_json}</script>
-        <script id="all-image-paths" type="application/json">{image_paths_json}</script>
-        <script id="code-snippets" type="application/json">{code_snippets_json}</script>
-
-        <!-- Modal is currently disabled for this visualization -->
-        <!--
-        <div id="modal" class="modal">
-            ...
-        </div>
-        -->
-
-        <script>
-            // Modal functionality is disabled for this view.
-        </script>
     </body>
     </html>
     """
