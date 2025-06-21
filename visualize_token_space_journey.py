@@ -21,6 +21,7 @@ import io
 import html
 import umap
 from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
 
 load_dotenv()
 
@@ -365,9 +366,11 @@ def create_2d_journey_plot(
         ax.scatter(x, y, color=colors[i], s=150, label=label, edgecolors="black")
         ax.text(x + 0.05, y + 0.05, label, fontsize=9, color=colors[i], weight="bold")
 
-        # 4. If previous positions are provided, draw arrows to show the journey
+        # 4. If previous positions are provided, draw arrows and 'ghost' dots
         if previous_probe_word_vectors_2d is not None:
             prev_x, prev_y = previous_probe_word_vectors_2d[i]
+            # Draw a 'ghost' dot at the previous location
+            ax.scatter(prev_x, prev_y, color=colors[i], s=50, alpha=0.3)
             ax.annotate(
                 "",
                 xy=(x, y),
@@ -477,12 +480,28 @@ def main():
     print("UMAP projection created.")
 
     # --- Define key words to always highlight on the plot ---
-    key_words_to_highlight = ["knock", "who", "there", "cat", "dog", "man", "woman"]
-    # Add words from the probe sentence to this list automatically
-    key_words_to_highlight.extend(words)
+    # Start with the probe words
+    key_words_to_highlight = list(set(words))
+
+    # NEW: Find diverse words using k-means to get a better map of the space
+    print("Finding diverse keywords using K-Means clustering...")
+    n_clusters = 15  # How many representative words to find
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init="auto").fit(
+        base_map_2d
+    )
+
+    # Find the word closest to each cluster center
+    for i in range(n_clusters):
+        center = kmeans.cluster_centers_[i]
+        # Calculate Euclidean distance from the center to all points
+        distances = np.linalg.norm(base_map_2d - center, axis=1)
+        closest_word_index = np.argmin(distances)
+        key_words_to_highlight.append(itos[closest_word_index])
+
     key_words_to_highlight = sorted(
         list(set(key_words_to_highlight))
     )  # remove duplicates and sort
+    print(f"Keywords for highlighting: {key_words_to_highlight}")
 
     key_word_indices = [stoi.get(w) for w in key_words_to_highlight if w in stoi]
     key_word_vectors_2d = base_map_2d[key_word_indices] if key_word_indices else None
@@ -976,8 +995,8 @@ def generate_html_page(
                 prediction_html += f"""
                     <div class="bar-row">
                         <span class="bar-label">{html.escape(word)}</span>
-                        <div class="bar" style="width: {{prob*100*4}}px; background-color: rgba(220, 53, 69, {{0.2 + prob*0.8}});"></div>
-                        <span class="bar-value">{{prob*100:0.2f}}%</span>
+                        <div class="bar" style="width: {prob*100*4}px; background-color: rgba(220, 53, 69, {0.2 + prob*0.8});"></div>
+                        <span class="bar-value">{(prob*100):.2f}%</span>
                     </div>
                 """
             prediction_html += "</div>"
