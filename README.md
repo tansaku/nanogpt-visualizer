@@ -101,6 +101,10 @@ Each script can be explored for more targeted analysis of the model's components
 This repository was developed to support the "Transformers, From the Inside Out" talk. You can find the slides and a recording of the presentation here:
 
 -   **[Presentation Slides (PDF)](TransformersInsideOut-part2.pdf)**
--   **Presentation Video:**
+-   **Official Presentation Video:**
+
+    [![Transformers, From the Inside Out](https://img.youtube.com/vi/i6mmzGxo-hk/0.jpg)](https://www.youtube.com/watch?v=i6mmzGxo-hk)
+
+-   **Bootleg Presentation Video:**
 
     [![Transformers, From the Inside Out](https://img.youtube.com/vi/Y1Iv5bH3xXo/0.jpg)](https://youtu.be/Y1Iv5bH3xXo)
