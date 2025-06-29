@@ -247,15 +247,15 @@ def create_interactive_plot(
     """
     fig = go.Figure()
 
-    # 1. Plot the entire vocabulary as a background
+    # 1. Plot the entire vocabulary using Scattergl for performance
     fig.add_trace(
-        go.Scatter(
+        go.Scattergl(
             x=base_map_2d[:, 0],
             y=base_map_2d[:, 1],
             mode="markers",
-            marker=dict(color="lightgray", size=3, opacity=0.3),
+            marker=dict(color="#e0e0e0", size=5, opacity=0.6),
+            text=[vocab_itos.get(i, "") for i in range(len(base_map_2d))],
             hoverinfo="text",
-            text=[f"Vocab: {word}" for word in vocab_itos],
             name="Vocabulary",
         )
     )
@@ -922,7 +922,7 @@ def generate_html_page(
     <head>
         <meta charset="UTF-8">
         <title>Full Model Flow Visualization</title>
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
         <style>
             body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; margin: 2em; background: #f0f2f5; color: #333; }}
             h1, h2, p {{ text-align: center; }}
